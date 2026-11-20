@@ -116,7 +116,7 @@ class LaporanController extends Controller
         $this->validateFilter($request);
 
         $data = $this->queryPenerimaan($request)
-            ->paginate(15)
+            ->paginate(10)
             ->withQueryString();
 
         return view('laporan.penerimaan', [
@@ -167,6 +167,8 @@ class LaporanController extends Controller
                 'dp.satuan',
                 'dp.lokasi',
                 'dp.qty',
+                'dp.harga_pokok',
+                'dp.jumlah_harga_pokok',
             ]);
 
         if (!$this->isGlobalUser()) {
@@ -182,11 +184,11 @@ class LaporanController extends Controller
         }
 
         if ($request->filled('divisi')) {
-            $query->where('pg.divisi', 'like', '%'.$request->divisi.'%');
+            $query->where('pg.divisi', 'like', '%' . $request->divisi . '%');
         }
 
         if ($request->filled('nama_pengambil')) {
-            $query->where('pg.nama_pengambil', 'like', '%'.$request->nama_pengambil.'%');
+            $query->where('pg.nama_pengambil', 'like', '%' . $request->nama_pengambil . '%');
         }
 
         if ($request->filled('q')) {
@@ -214,12 +216,46 @@ class LaporanController extends Controller
     {
         $this->validateFilter($request);
 
-        $data = $this->queryPengeluaran($request)
-            ->paginate(15)
-            ->withQueryString();
+        $query = $this->queryPengeluaran($request);
+
+        // Query total dibuat terpisah agar tidak bercampur
+        // dengan SELECT kolom detail barang.
+        $totalHargaPokok = DB::table('detail_pengeluarans as dp')
+            ->join('pengeluarans as pg', 'dp.pengeluaran_id', '=', 'pg.id')
+            ->when(!$this->isGlobalUser(), function ($q) {
+                $q->where('pg.branch_id', $this->branchId());
+            })
+            ->when($request->filled('tanggal_dari'), function ($q) use ($request) {
+                $q->whereDate('pg.tanggal', '>=', $request->tanggal_dari);
+            })
+            ->when($request->filled('tanggal_sampai'), function ($q) use ($request) {
+                $q->whereDate('pg.tanggal', '<=', $request->tanggal_sampai);
+            })
+            ->when($request->filled('divisi'), function ($q) use ($request) {
+                $q->where('pg.divisi', 'like', '%' . $request->divisi . '%');
+            })
+            ->when($request->filled('nama_pengambil'), function ($q) use ($request) {
+                $q->where('pg.nama_pengambil', 'like', '%' . $request->nama_pengambil . '%');
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+
+                $q->where(function ($sub) use ($keyword) {
+                    $sub->where('dp.kode_barang', 'like', "%{$keyword}%")
+                        ->orWhere('dp.nama_barang', 'like', "%{$keyword}%")
+                        ->orWhere('pg.nama_pengambil', 'like', "%{$keyword}%")
+                        ->orWhere('pg.divisi', 'like', "%{$keyword}%")
+                        ->orWhere('pg.nomor_pengeluaran', 'like', "%{$keyword}%")
+                        ->orWhere('pg.keterangan', 'like', "%{$keyword}%");
+                });
+            })
+            ->sum('dp.jumlah_harga_pokok');
+
+        $data = $query->paginate(10)->withQueryString();
 
         return view('laporan.pengeluaran', [
             'data' => $data,
+            'totalHargaPokok' => $totalHargaPokok,
         ]);
     }
 
@@ -230,13 +266,229 @@ class LaporanController extends Controller
     {
         $this->validateFilter($request);
 
-        $data = $this->queryPengeluaran($request)->get();
+        $query = $this->queryPengeluaran($request);
+
+        $totalHargaPokok = DB::table('detail_pengeluarans as dp')
+            ->join('pengeluarans as pg', 'dp.pengeluaran_id', '=', 'pg.id')
+            ->when(!$this->isGlobalUser(), function ($q) {
+                $q->where('pg.branch_id', $this->branchId());
+            })
+            ->when($request->filled('tanggal_dari'), function ($q) use ($request) {
+                $q->whereDate('pg.tanggal', '>=', $request->tanggal_dari);
+            })
+            ->when($request->filled('tanggal_sampai'), function ($q) use ($request) {
+                $q->whereDate('pg.tanggal', '<=', $request->tanggal_sampai);
+            })
+            ->when($request->filled('divisi'), function ($q) use ($request) {
+                $q->where('pg.divisi', 'like', '%' . $request->divisi . '%');
+            })
+            ->when($request->filled('nama_pengambil'), function ($q) use ($request) {
+                $q->where('pg.nama_pengambil', 'like', '%' . $request->nama_pengambil . '%');
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+
+                $q->where(function ($sub) use ($keyword) {
+                    $sub->where('dp.kode_barang', 'like', "%{$keyword}%")
+                        ->orWhere('dp.nama_barang', 'like', "%{$keyword}%")
+                        ->orWhere('pg.nama_pengambil', 'like', "%{$keyword}%")
+                        ->orWhere('pg.divisi', 'like', "%{$keyword}%")
+                        ->orWhere('pg.nomor_pengeluaran', 'like', "%{$keyword}%")
+                        ->orWhere('pg.keterangan', 'like', "%{$keyword}%");
+                });
+            })
+            ->sum('dp.jumlah_harga_pokok');
+
+        $data = $query->get();
 
         $pdf = Pdf::loadView('laporan.pengeluaran-pdf', [
             'data' => $data,
             'filter' => $request,
+            'totalHargaPokok' => $totalHargaPokok,
         ])->setPaper('a4', 'landscape');
 
         return $pdf->stream('laporan-pengeluaran.pdf');
+    }
+
+    /**
+ * QUERY LAPORAN PENYESUAIAN STOK
+ * Satu baris untuk setiap transaksi penyesuaian.
+ */
+private function queryPenyesuaian(Request $request)
+{
+    $query = DB::table('penyesuaian_stoks as ps')
+        ->leftJoin('branches as b', 'ps.branch_id', '=', 'b.id')
+        ->select([
+            'ps.id',
+            'ps.nomor_penyesuaian',
+            'ps.tanggal',
+            'ps.branch_id',
+            'ps.kode_barang',
+            'ps.nama_barang',
+            'ps.qty_koreksi',
+            'ps.alasan',
+            'b.nama_cabang',
+        ]);
+
+    // User cabang hanya melihat transaksi cabangnya sendiri.
+    if (!$this->isGlobalUser()) {
+        $query->where('ps.branch_id', $this->branchId());
+    }
+
+    // Filter cabang hanya untuk user global.
+    if ($this->isGlobalUser() && $request->filled('branch_id')) {
+        $query->where('ps.branch_id', $request->branch_id);
+    }
+
+    if ($request->filled('tanggal_dari')) {
+        $query->whereDate('ps.tanggal', '>=', $request->tanggal_dari);
+    }
+
+    if ($request->filled('tanggal_sampai')) {
+        $query->whereDate('ps.tanggal', '<=', $request->tanggal_sampai);
+    }
+
+    if ($request->filled('q')) {
+        $keyword = $request->q;
+
+        $query->where(function ($q) use ($keyword) {
+            $q->where('ps.nomor_penyesuaian', 'like', "%{$keyword}%")
+                ->orWhere('ps.kode_barang', 'like', "%{$keyword}%")
+                ->orWhere('ps.nama_barang', 'like', "%{$keyword}%")
+                ->orWhere('ps.alasan', 'like', "%{$keyword}%")
+                ->orWhere('b.nama_cabang', 'like', "%{$keyword}%");
+        });
+    }
+
+    return $query
+        ->orderByDesc('ps.tanggal')
+        ->orderByDesc('ps.id');
+}
+
+/**
+ * HALAMAN LAPORAN PENYESUAIAN STOK.
+ */
+public function penyesuaian(Request $request)
+{
+    $request->validate([
+        'tanggal_dari' => ['nullable', 'date'],
+        'tanggal_sampai' => [
+            'nullable',
+            'date',
+            'after_or_equal:tanggal_dari',
+        ],
+        'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        'q' => ['nullable', 'string', 'max:150'],
+    ]);
+
+    $data = $this->queryPenyesuaian($request)
+        ->paginate(10)
+        ->withQueryString();
+
+    // Ringkasan jumlah penambahan dan pengurangan.
+    $ringkasanQuery = DB::table('penyesuaian_stoks as ps')
+        ->when(!$this->isGlobalUser(), function ($q) {
+            $q->where('ps.branch_id', $this->branchId());
+        })
+        ->when($this->isGlobalUser() && $request->filled('branch_id'), function ($q) use ($request) {
+            $q->where('ps.branch_id', $request->branch_id);
+        })
+        ->when($request->filled('tanggal_dari'), function ($q) use ($request) {
+            $q->whereDate('ps.tanggal', '>=', $request->tanggal_dari);
+        })
+        ->when($request->filled('tanggal_sampai'), function ($q) use ($request) {
+            $q->whereDate('ps.tanggal', '<=', $request->tanggal_sampai);
+        })
+        ->when($request->filled('q'), function ($q) use ($request) {
+            $keyword = $request->q;
+
+            $q->where(function ($sub) use ($keyword) {
+                $sub->where('ps.nomor_penyesuaian', 'like', "%{$keyword}%")
+                    ->orWhere('ps.kode_barang', 'like', "%{$keyword}%")
+                    ->orWhere('ps.nama_barang', 'like', "%{$keyword}%")
+                    ->orWhere('ps.alasan', 'like', "%{$keyword}%");
+            });
+        });
+
+    $ringkasan = (clone $ringkasanQuery)
+        ->selectRaw("
+            COUNT(*) as total_transaksi,
+            COALESCE(SUM(CASE WHEN qty_koreksi > 0 THEN qty_koreksi ELSE 0 END), 0) as total_penambahan,
+            COALESCE(SUM(CASE WHEN qty_koreksi < 0 THEN ABS(qty_koreksi) ELSE 0 END), 0) as total_pengurangan
+        ")
+        ->first();
+
+    return view('laporan.penyesuaian', [
+        'data' => $data,
+        'branches' => $this->isGlobalUser()
+            ? \App\Models\Branch::orderBy('nama_cabang')->get()
+            : collect(),
+        'isGlobalUser' => $this->isGlobalUser(),
+        'ringkasan' => $ringkasan,
+    ]);
+    }
+
+    private function ringkasanPenyesuaian(Request $request)
+    {
+        $query = DB::table('penyesuaian_stoks as ps')
+            ->when(!$this->isGlobalUser(), function ($q) {
+                $q->where('ps.branch_id', $this->branchId());
+            })
+            ->when($this->isGlobalUser() && $request->filled('branch_id'), function ($q) use ($request) {
+                $q->where('ps.branch_id', $request->branch_id);
+            })
+            ->when($request->filled('tanggal_dari'), function ($q) use ($request) {
+                $q->whereDate('ps.tanggal', '>=', $request->tanggal_dari);
+            })
+            ->when($request->filled('tanggal_sampai'), function ($q) use ($request) {
+                $q->whereDate('ps.tanggal', '<=', $request->tanggal_sampai);
+            })
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $keyword = $request->q;
+
+                $q->where(function ($sub) use ($keyword) {
+                    $sub->where('ps.nomor_penyesuaian', 'like', "%{$keyword}%")
+                        ->orWhere('ps.kode_barang', 'like', "%{$keyword}%")
+                        ->orWhere('ps.nama_barang', 'like', "%{$keyword}%")
+                        ->orWhere('ps.alasan', 'like', "%{$keyword}%");
+                });
+            });
+
+        return $query->selectRaw("
+            COUNT(*) as total_transaksi,
+            COALESCE(SUM(CASE WHEN ps.qty_koreksi > 0 THEN ps.qty_koreksi ELSE 0 END), 0) as total_penambahan,
+            COALESCE(SUM(CASE WHEN ps.qty_koreksi < 0 THEN ABS(ps.qty_koreksi) ELSE 0 END), 0) as total_pengurangan
+        ")->first();
+    }
+    /**
+     * PDF LAPORAN PENYESUAIAN STOK.
+     */
+    public function penyesuaianPdf(Request $request)
+    {
+        $request->validate([
+            'tanggal_dari' => ['nullable', 'date'],
+            'tanggal_sampai' => [
+                'nullable',
+                'date',
+                'after_or_equal:tanggal_dari',
+            ],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'q' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        // Ambil seluruh data detail untuk PDF.
+        $data = $this->queryPenyesuaian($request)->get();
+
+        // Ambil ringkasan menggunakan query agregasi terpisah.
+        $ringkasan = $this->ringkasanPenyesuaian($request);
+
+        $pdf = Pdf::loadView('laporan.penyesuaian-pdf', [
+            'data' => $data,
+            'filter' => $request,
+            'ringkasan' => $ringkasan,
+            'isGlobalUser' => $this->isGlobalUser(),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream('laporan-penyesuaian-stok.pdf');
     }
 }

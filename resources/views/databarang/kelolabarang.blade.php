@@ -3,6 +3,63 @@
 @section('container')
 <!-- STYLE POPUP EDIT/DELETE -->
 <style>
+    .pagination-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+    }
+
+    .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        color: #0d6efd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .page-btn:hover {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .page-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .page-btn.disabled {
+        color: #adb5bd;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
     .modal {
     position: fixed !important;
     top: 0;
@@ -19,7 +76,7 @@
         margin-right: auto;
         
     }
-    </style>
+</style>
 <div class="container">
 
     <h2 class="mb-4">Kelola Barang</h2>
@@ -198,7 +255,7 @@
                                 class="btn btn-warning btn-sm"
                                 data-bs-toggle="modal"
                                 data-bs-target="#editModal{{ $loop->index }}">
-                                Edit
+                                Adjst
                             </button>
 
                             <button type="button"
@@ -225,8 +282,8 @@
                             <div class="modal-content">
 
                                 <form
-                                    action="{{ route('databarang.barang.update', ['kode_barang' => $barang->kode_barang]) }}"
-                                    method="POST">
+                                action="{{ route('databarang.barang.update', $barang->id) }}"
+                                method="POST">
 
                                     @csrf
                                     @method('PUT')
@@ -234,7 +291,7 @@
                                     <div class="modal-header">
 
                                         <h5 class="modal-title">
-                                            Edit Data Barang
+                                            Adjust Stok Barang
                                         </h5>
 
                                         <button type="button"
@@ -257,54 +314,11 @@
                                                 value="{{ $barang->kode_barang }}"
                                                 readonly>
                                         </div>
+                                        <input type="hidden" name="nama_barang" value="{{ $barang->nama_barang }}">
+                                        <input type="hidden" name="kategori" value="{{ $barang->kategori }}">
+                                        <input type="hidden" name="satuan" value="{{ $barang->satuan }}">
+                                        <input type="hidden" name="lokasi" value="{{ $barang->lokasi }}">
 
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                Nama Barang
-                                            </label>
-
-                                            <input type="text"
-                                                name="nama_barang"
-                                                class="form-control"
-                                                value="{{ $barang->nama_barang }}"
-                                                required>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                Kategori
-                                            </label>
-
-                                            <input type="text"
-                                                name="kategori"
-                                                class="form-control"
-                                                value="{{ $barang->kategori }}"
-                                                required>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                Satuan
-                                            </label>
-
-                                            <input type="text"
-                                                name="satuan"
-                                                class="form-control"
-                                                value="{{ $barang->satuan }}"
-                                                required>
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                Lokasi
-                                            </label>
-
-                                            <input type="text"
-                                                name="lokasi"
-                                                class="form-control"
-                                                value="{{ $barang->lokasi }}"
-                                                required>
-                                        </div>                  
                                         {{-- TOTAL STOK (TERKUNCI) --}}
                                         <div class="mb-3">
                                             <label class="form-label">
@@ -343,13 +357,19 @@
                                         {{-- ALASAN PENYESUAIAN --}}
                                         <div class="mb-3">
                                             <label class="form-label">
-                                                Alasan Penyesuaian
+                                                Alasan Penyesuaian <span class="text-danger">*</span>
                                             </label>
 
                                             <textarea name="alasan"
                                                 class="form-control"
                                                 rows="2"
-                                                placeholder="Contoh: Koreksi hasil stok opname"></textarea>
+                                                placeholder="Contoh: Koreksi hasil stok opname"
+                                                required
+                                                maxlength="255">{{ old('alasan') }}</textarea>
+
+                                            @error('alasan')
+                                                <small class="text-danger">{{ $message }}</small>
+                                            @enderror
                                         </div>
 
 
@@ -439,8 +459,8 @@
                                     </button>
 
                                     <form
-                                        action="{{ route('databarang.barang.destroy', ['kode_barang' => $barang->kode_barang]) }}"
-                                        method="POST">
+                                    action="{{ route('databarang.barang.destroy', $barang->id) }}"
+                                    method="POST">
 
                                         @csrf
                                         @method('DELETE')
@@ -472,6 +492,78 @@
             </tbody>
 
         </table>
+        {{-- PAGINATION BARANG --}}
+@if ($barangs->hasPages())
+    @php
+        $current = $barangs->currentPage();
+        $last = $barangs->lastPage();
+
+        $start = max(1, $current - 1);
+        $end = min($last, $current + 1);
+    @endphp
+
+    <div class="pagination-container">
+
+        <div class="pagination-info">
+            Menampilkan {{ $barangs->firstItem() ?? 0 }}
+            sampai {{ $barangs->lastItem() ?? 0 }}
+            dari {{ $barangs->total() }} barang
+        </div>
+
+        <div class="pagination-links">
+
+            {{-- Previous --}}
+            @if ($barangs->onFirstPage())
+                <span class="page-btn disabled">‹ Previous</span>
+            @else
+                <a href="{{ $barangs->previousPageUrl() }}" class="page-btn">
+                    ‹ Previous
+                </a>
+            @endif
+
+            {{-- Halaman pertama --}}
+            @if ($start > 1)
+                <a href="{{ $barangs->url(1) }}" class="page-btn">1</a>
+
+                @if ($start > 2)
+                    <span class="page-btn disabled">...</span>
+                @endif
+            @endif
+
+            {{-- Halaman sekitar posisi aktif --}}
+            @foreach (range($start, $end) as $page)
+                @if ($page == $current)
+                    <span class="page-btn active">{{ $page }}</span>
+                @else
+                    <a href="{{ $barangs->url($page) }}" class="page-btn">
+                        {{ $page }}
+                    </a>
+                @endif
+            @endforeach
+
+            {{-- Halaman terakhir --}}
+            @if ($end < $last)
+                @if ($end < $last - 1)
+                    <span class="page-btn disabled">...</span>
+                @endif
+
+                <a href="{{ $barangs->url($last) }}" class="page-btn">
+                    {{ $last }}
+                </a>
+            @endif
+
+            {{-- Next --}}
+            @if ($barangs->hasMorePages())
+                <a href="{{ $barangs->nextPageUrl() }}" class="page-btn">
+                    Next ›
+                </a>
+            @else
+                <span class="page-btn disabled">Next ›</span>
+            @endif
+
+        </div>
+    </div>
+@endif
 
     </div>
 

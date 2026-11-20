@@ -508,6 +508,8 @@
                                         <th>Kode Barang</th>
                                         <th style="width: 13%">Stok Tersedia</th>
                                         <th style="width: 13%">Jumlah Keluar</th>
+                                        <th>Harga Pokok</th>
+                                        <th>Amount Harga Pengeluaran</th>
                                         <th style="width: 10%">Aksi</th>
                                     </tr>
                                 </thead>
@@ -546,7 +548,21 @@
                                                 value="1"
                                                 required>
                                         </td>
+                                        <!--  -->
+                                        <td>
+                                            <input type="text"
+                                                class="form-control harga-pokok-display"
+                                                value="Rp 0"
+                                                readonly>
+                                        </td>
 
+                                        <td>
+                                            <input type="text"
+                                                class="form-control amount-display fw-semibold"
+                                                value="Rp 0"
+                                                readonly>
+                                        </td>
+                                        <!--  -->
                                         <td class="text-center">
                                             <button type="button"
                                                     class="btn btn-danger btn-sm hapus-barang">
@@ -558,7 +574,15 @@
                             </table>
                         </div>
 
-
+                        <div class="d-flex justify-content-end mt-3">
+                        <div class="text-end">
+                            <div class="text-muted">Total Harga Pengeluaran</div>
+                            <h5 class="fw-bold text-primary"
+                                id="totalPengeluaranDisplay">
+                                Rp 0
+                            </h5>
+                        </div>
+                    </div>
                         <div class="alert alert-info py-2">
                             Pastikan jumlah pengeluaran tidak melebihi stok tersedia.
                             Stok akan berkurang setelah transaksi berhasil disimpan.
@@ -635,7 +659,11 @@
                         @forelse($pengeluarans as $index => $pengeluaran)
                             <tr>
                                 <td>{{ $index + 1 }}</td>
-                                <td>{{ $pengeluaran->nomor_pengeluaran }}</td>
+                                <td>
+                                    <strong>
+                                    {{ $pengeluaran->nomor_pengeluaran }}
+                                    </strong>
+                                </td>
                                 <td>
                                     {{ \Carbon\Carbon::parse($pengeluaran->tanggal)->format('d-m-Y') }}
                                 </td>
@@ -663,49 +691,77 @@
                     </tbody>
                 </table>
                 {{-- PAGINATION --}}
-                @if ($pengeluarans->hasPages())
-                    <div class="pagination-container">
+@if ($pengeluarans->hasPages())
+    @php
+        $current = $pengeluarans->currentPage();
+        $last = $pengeluarans->lastPage();
 
-                        <div class="pagination-info">
-                            Menampilkan {{ $pengeluarans->firstItem() ?? 0 }}
-                            sampai {{ $pengeluarans->lastItem() ?? 0 }}
-                            dari {{ $pengeluarans->total() }} pengeluaran
-                        </div>
+        $start = max(1, $current - 1);
+        $end = min($last, $current + 1);
+    @endphp
 
-                        <div class="pagination-links">
+    <div class="pagination-container">
 
-                            {{-- Previous --}}
-                            @if ($pengeluarans->onFirstPage())
-                                <span class="page-btn disabled">‹ Previous</span>
-                            @else
-                                <a href="{{ $pengeluarans->previousPageUrl() }}" class="page-btn">
-                                    ‹ Previous
-                                </a>
-                            @endif
+        <div class="pagination-info">
+            Menampilkan {{ $pengeluarans->firstItem() ?? 0 }}
+            sampai {{ $pengeluarans->lastItem() ?? 0 }}
+            dari {{ $pengeluarans->total() }} pengeluaran
+        </div>
 
-                            {{-- Nomor halaman --}}
-                            @foreach ($pengeluarans->getUrlRange(1, $pengeluarans->lastPage()) as $page => $url)
-                                @if ($page == $pengeluarans->currentPage())
-                                    <span class="page-btn active">{{ $page }}</span>
-                                @else
-                                    <a href="{{ $url }}" class="page-btn">
-                                        {{ $page }}
-                                    </a>
-                                @endif
-                            @endforeach
+        <div class="pagination-links">
 
-                            {{-- Next --}}
-                            @if ($pengeluarans->hasMorePages())
-                                <a href="{{ $pengeluarans->nextPageUrl() }}" class="page-btn">
-                                    Next ›
-                                </a>
-                            @else
-                                <span class="page-btn disabled">Next ›</span>
-                            @endif
+            {{-- Previous --}}
+            @if ($pengeluarans->onFirstPage())
+                <span class="page-btn disabled">‹ Previous</span>
+            @else
+                <a href="{{ $pengeluarans->previousPageUrl() }}" class="page-btn">
+                    ‹ Previous
+                </a>
+            @endif
 
-                        </div>
-                    </div>
+            {{-- Halaman pertama --}}
+            @if ($start > 1)
+                <a href="{{ $pengeluarans->url(1) }}" class="page-btn">1</a>
+
+                @if ($start > 2)
+                    <span class="page-btn disabled">...</span>
                 @endif
+            @endif
+
+            {{-- Halaman sekitar posisi aktif --}}
+            @foreach (range($start, $end) as $page)
+                @if ($page == $current)
+                    <span class="page-btn active">{{ $page }}</span>
+                @else
+                    <a href="{{ $pengeluarans->url($page) }}" class="page-btn">
+                        {{ $page }}
+                    </a>
+                @endif
+            @endforeach
+
+            {{-- Halaman terakhir --}}
+            @if ($end < $last)
+                @if ($end < $last - 1)
+                    <span class="page-btn disabled">...</span>
+                @endif
+
+                <a href="{{ $pengeluarans->url($last) }}" class="page-btn">
+                    {{ $last }}
+                </a>
+            @endif
+
+            {{-- Next --}}
+            @if ($pengeluarans->hasMorePages())
+                <a href="{{ $pengeluarans->nextPageUrl() }}" class="page-btn">
+                    Next ›
+                </a>
+            @else
+                <span class="page-btn disabled">Next ›</span>
+            @endif
+
+        </div>
+    </div>
+@endif
             </div>
         </div>
     </div>
@@ -715,625 +771,734 @@
 {{-- JAVASCRIPT --}}
 <script>
 
-    document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function () {
 
-    // ==========================================
-    // ELEMENT UTAMA
-    // ==========================================
+// ==========================================
+// ELEMENT UTAMA
+// ==========================================
 
-    const daftarBarang = document.getElementById('daftarBarang');
-    const btnTambah = document.getElementById('btnTambahBarang');
+const daftarBarang = document.getElementById('daftarBarang');
+const btnTambah = document.getElementById('btnTambahBarang');
 
-    if (!daftarBarang) {
-        console.error('Elemen daftarBarang tidak ditemukan.');
-        return;
+if (!daftarBarang) {
+    console.error('Elemen daftarBarang tidak ditemukan.');
+    return;
+}
+
+const form = daftarBarang.closest('form');
+
+// Data barang dari Controller
+// Pastikan Controller mengirim harga_pokok
+const dataBarang = @js($dataBarang);
+
+// ==========================================
+// FORMAT RUPIAH
+// ==========================================
+
+function formatRupiah(angka) {
+    return 'Rp ' + Number(angka || 0).toLocaleString('id-ID');
+}
+
+// ==========================================
+// MENCARI BARANG
+// ==========================================
+
+function cariBarang(kode) {
+    return dataBarang.find(function (item) {
+        return String(item.kode) === String(kode);
+    });
+}
+
+// ==========================================
+// MENGAMBIL HARGA POKOK BARANG
+// ==========================================
+
+function ambilHargaPokok(barang) {
+    if (!barang) return 0;
+
+    return Number(
+        barang.harga_pokok ??
+        barang.average_perolehan ??
+        0
+    );
+}
+
+// ==========================================
+// UPDATE HARGA DAN AMOUNT PER BARIS
+// ==========================================
+
+function updateAmount(row) {
+
+    const kode = row.querySelector('.kode-barang-input').value;
+    const qty = Number(row.querySelector('.input-qty').value || 0);
+
+    const barang = cariBarang(kode);
+    const harga = ambilHargaPokok(barang);
+
+    const amount = qty * harga;
+
+    const hargaDisplay = row.querySelector('.harga-pokok-display');
+    const amountDisplay = row.querySelector('.amount-display');
+
+    if (hargaDisplay) {
+        hargaDisplay.value = formatRupiah(harga);
     }
 
-    const form = daftarBarang.closest('form');
-
-    // Data barang dari Controller
-    const dataBarang = @js($dataBarang);
-
-    // ==========================================
-    // FUNGSI MENCARI BARANG
-    // ==========================================
-
-    function cariBarang(kode) {
-        return dataBarang.find(function (item) {
-            return String(item.kode) === String(kode);
-        });
+    if (amountDisplay) {
+        amountDisplay.value = formatRupiah(amount);
     }
 
-    // ==========================================
-    // MEMBUAT DROPDOWN AUTOCOMPLETE
-    // ==========================================
+    hitungTotalPengeluaran();
+}
 
-    function buatDropdown(input) {
+// ==========================================
+// HITUNG TOTAL HARGA PENGELUARAN
+// ==========================================
 
-        // Jika dropdown sudah dibuat, gunakan kembali
-        if (input._autocompleteList) {
-            return input._autocompleteList;
-        }
+function hitungTotalPengeluaran() {
 
-        const list = document.createElement('div');
+    let total = 0;
 
-        list.className = 'autocomplete-list';
+    daftarBarang.querySelectorAll('.baris-barang').forEach(function (row) {
 
-        Object.assign(list.style, {
-            position: 'fixed',
-            display: 'none',
-            zIndex: '999999',
-            background: '#fff',
-            border: '1px solid #d5dce5',
-            borderRadius: '7px',
-            maxHeight: '220px',
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            boxShadow: '0 5px 15px rgba(0,0,0,0.18)'
-        });
-
-        // Dropdown dipindahkan ke body
-        document.body.appendChild(list);
-
-        input._autocompleteList = list;
-
-        return list;
-    }
-
-    // ==========================================
-    // MENGATUR POSISI DROPDOWN
-    // ==========================================
-
-    function aturPosisiDropdown(input, list) {
-
-        const rect = input.getBoundingClientRect();
-
-        // Jika input berada di luar layar, sembunyikan
-        if (
-            rect.bottom <= 0 ||
-            rect.top >= window.innerHeight
-        ) {
-            list.style.display = 'none';
-            return;
-        }
-
-        const tinggiMaksimal = 220;
-        const ruangBawah = window.innerHeight - rect.bottom;
-        const ruangAtas = rect.top;
-
-        let top;
-        let maxHeight = tinggiMaksimal;
-
-        // Jika ruang bawah sempit, tampilkan ke atas
-        if (
-            ruangBawah < 150 &&
-            ruangAtas > ruangBawah
-        ) {
-            maxHeight = Math.min(tinggiMaksimal, ruangAtas - 5);
-
-            list.style.maxHeight = maxHeight + 'px';
-            list.style.top = 'auto';
-            list.style.bottom = (window.innerHeight - rect.top) + 'px';
-
-        } else {
-
-            maxHeight = Math.min(tinggiMaksimal, ruangBawah - 5);
-
-            top = rect.bottom;
-
-            list.style.top = top + 'px';
-            list.style.bottom = 'auto';
-        }
-
-        list.style.left = rect.left + 'px';
-        list.style.width = rect.width + 'px';
-        list.style.maxHeight = Math.max(60, maxHeight) + 'px';
-        list.style.zIndex = '999999';
-    }
-
-    // ==========================================
-    // MENUTUP DROPDOWN
-    // ==========================================
-
-    function tutupDropdown(input) {
-
-        if (input && input._autocompleteList) {
-            input._autocompleteList.style.display = 'none';
-        }
-    }
-
-    // ==========================================
-    // MENAMPILKAN HASIL AUTOCOMPLETE
-    // ==========================================
-
-    function tampilkanAutocomplete(input) {
-
-        const wrapper = input.closest('.autocomplete-wrapper');
-
-        if (!wrapper) return;
-
-        const list = buatDropdown(input);
-
-        const keyword = input.value.trim().toLowerCase();
-
-        const row = input.closest('.baris-barang');
-
-        const kodeInput = row.querySelector('.kode-barang-input');
-        const kodeLabel = row.querySelector('.kode-label');
-        const stokLabel = row.querySelector('.stok-label');
-
-        // Setiap kali mengetik, pilihan lama dibatalkan
-        kodeInput.value = '';
-        kodeLabel.textContent = '-';
-        stokLabel.textContent = '0';
-
-        const qtyInput = row.querySelector('.input-qty');
-
-        qtyInput.removeAttribute('max');
-        qtyInput.setCustomValidity('');
-
-        list.innerHTML = '';
-
-        if (keyword.length === 0) {
-            tutupDropdown(input);
-            return;
-        }
-
-        // Cari berdasarkan nama atau kode
-        const hasil = dataBarang.filter(function (item) {
-
-            return (
-                String(item.nama).toLowerCase().includes(keyword) ||
-                String(item.kode).toLowerCase().includes(keyword)
-            );
-
-        });
-
-        if (hasil.length === 0) {
-
-            const empty = document.createElement('div');
-
-            empty.className = 'autocomplete-empty';
-            empty.textContent = 'Barang tidak ditemukan';
-
-            list.appendChild(empty);
-
-        } else {
-
-            hasil.forEach(function (item) {
-
-                const option = document.createElement('div');
-
-                option.className = 'autocomplete-item';
-
-                option.style.padding = '10px 12px';
-                option.style.cursor = 'pointer';
-                option.style.borderBottom = '1px solid #eee';
-                option.style.fontSize = '13px';
-
-                option.textContent =
-                    item.nama + ' (' + item.kode + ') - Stok: ' +
-                    item.stok + ' ' + (item.satuan || '');
-
-                // Hover
-                option.addEventListener('mouseenter', function () {
-                    option.style.background = '#edf4ff';
-                });
-
-                option.addEventListener('mouseleave', function () {
-                    option.style.background = '#fff';
-                });
-
-                // Pilih barang
-                option.addEventListener('mousedown', function (e) {
-
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    input.value = item.nama;
-
-                    kodeInput.value = item.kode;
-
-                    kodeLabel.textContent = item.kode;
-
-                    stokLabel.textContent =
-                        item.stok + ' ' + (item.satuan || '');
-
-                    qtyInput.max = item.stok;
-
-                    qtyInput.value = 1;
-
-                    qtyInput.setCustomValidity('');
-
-                    tutupDropdown(input);
-
-                    cekBarangSama();
-
-                });
-
-                list.appendChild(option);
-
-            });
-
-        }
-
-        list.style.display = 'block';
-
-        aturPosisiDropdown(input, list);
-    }
-
-    // ==========================================
-    // VALIDASI JUMLAH BARANG KELUAR
-    // ==========================================
-
-    function validasiStok(row) {
-
-        const kodeInput = row.querySelector('.kode-barang-input');
-        const qtyInput = row.querySelector('.input-qty');
-
-        const kode = kodeInput.value;
+        const kode = row.querySelector('.kode-barang-input').value;
+        const qty = Number(row.querySelector('.input-qty').value || 0);
 
         const barang = cariBarang(kode);
 
-        qtyInput.setCustomValidity('');
-
-        if (!kode || !barang) {
-            qtyInput.setCustomValidity(
-                'Silakan pilih barang dari daftar autocomplete.'
-            );
-            return false;
+        if (barang) {
+            const harga = ambilHargaPokok(barang);
+            total += qty * harga;
         }
 
-        const qty = Number(qtyInput.value);
-        const stok = Number(barang.stok);
+    });
 
-        if (!Number.isInteger(qty) || qty < 1) {
+    const totalDisplay = document.getElementById('totalPengeluaranDisplay');
 
-            qtyInput.setCustomValidity(
-                'Jumlah barang keluar minimal 1.'
-            );
+    if (totalDisplay) {
+        totalDisplay.textContent = formatRupiah(total);
+    }
+}
 
-            return false;
-        }
+// ==========================================
+// MEMBUAT DROPDOWN AUTOCOMPLETE
+// ==========================================
 
-        if (qty > stok) {
+function buatDropdown(input) {
 
-            qtyInput.setCustomValidity(
-                'Jumlah keluar melebihi stok tersedia. Stok saat ini: ' +
-                stok
-            );
-
-            return false;
-        }
-
-        return true;
+    if (input._autocompleteList) {
+        return input._autocompleteList;
     }
 
-    // ==========================================
-    // CEK BARANG DUPLIKAT
-    // ==========================================
+    const list = document.createElement('div');
 
-    function cekBarangSama() {
+    list.className = 'autocomplete-list';
 
-        const semuaKode = daftarBarang.querySelectorAll(
-            '.kode-barang-input'
+    Object.assign(list.style, {
+        position: 'fixed',
+        display: 'none',
+        zIndex: '999999',
+        background: '#fff',
+        border: '1px solid #d5dce5',
+        borderRadius: '7px',
+        maxHeight: '220px',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        boxShadow: '0 5px 15px rgba(0,0,0,0.18)'
+    });
+
+    document.body.appendChild(list);
+
+    input._autocompleteList = list;
+
+    return list;
+}
+
+// ==========================================
+// MENGATUR POSISI DROPDOWN
+// ==========================================
+
+function aturPosisiDropdown(input, list) {
+
+    const rect = input.getBoundingClientRect();
+
+    if (
+        rect.bottom <= 0 ||
+        rect.top >= window.innerHeight
+    ) {
+        list.style.display = 'none';
+        return;
+    }
+
+    const tinggiMaksimal = 220;
+    const ruangBawah = window.innerHeight - rect.bottom;
+    const ruangAtas = rect.top;
+
+    let top;
+    let maxHeight = tinggiMaksimal;
+
+    if (
+        ruangBawah < 150 &&
+        ruangAtas > ruangBawah
+    ) {
+
+        maxHeight = Math.min(tinggiMaksimal, ruangAtas - 5);
+
+        list.style.maxHeight = maxHeight + 'px';
+        list.style.top = 'auto';
+        list.style.bottom = (window.innerHeight - rect.top) + 'px';
+
+    } else {
+
+        maxHeight = Math.min(tinggiMaksimal, ruangBawah - 5);
+
+        top = rect.bottom;
+
+        list.style.top = top + 'px';
+        list.style.bottom = 'auto';
+    }
+
+    list.style.left = rect.left + 'px';
+    list.style.width = rect.width + 'px';
+    list.style.maxHeight = Math.max(60, maxHeight) + 'px';
+    list.style.zIndex = '999999';
+}
+
+// ==========================================
+// MENUTUP DROPDOWN
+// ==========================================
+
+function tutupDropdown(input) {
+
+    if (input && input._autocompleteList) {
+        input._autocompleteList.style.display = 'none';
+    }
+}
+
+// ==========================================
+// MENAMPILKAN AUTOCOMPLETE
+// ==========================================
+
+function tampilkanAutocomplete(input) {
+
+    const wrapper = input.closest('.autocomplete-wrapper');
+
+    if (!wrapper) return;
+
+    const list = buatDropdown(input);
+
+    const keyword = input.value.trim().toLowerCase();
+
+    const row = input.closest('.baris-barang');
+
+    const kodeInput = row.querySelector('.kode-barang-input');
+    const kodeLabel = row.querySelector('.kode-label');
+    const stokLabel = row.querySelector('.stok-label');
+
+    // Batalkan pilihan barang sebelumnya
+    kodeInput.value = '';
+    kodeLabel.textContent = '-';
+    stokLabel.textContent = '0';
+
+    const qtyInput = row.querySelector('.input-qty');
+
+    qtyInput.removeAttribute('max');
+    qtyInput.setCustomValidity('');
+
+    // Reset harga karena barang sedang diganti
+    updateAmount(row);
+
+    list.innerHTML = '';
+
+    if (keyword.length === 0) {
+        tutupDropdown(input);
+        return;
+    }
+
+    // Cari berdasarkan nama atau kode
+    const hasil = dataBarang.filter(function (item) {
+
+        return (
+            String(item.nama || '').toLowerCase().includes(keyword) ||
+            String(item.kode || '').toLowerCase().includes(keyword)
         );
 
-        const kodeTerpilih = [];
+    });
 
-        for (const input of semuaKode) {
+    if (hasil.length === 0) {
 
-            const kode = input.value;
+        const empty = document.createElement('div');
 
-            if (!kode) continue;
+        empty.className = 'autocomplete-empty';
+        empty.textContent = 'Barang tidak ditemukan';
 
-            if (kodeTerpilih.includes(kode)) {
+        list.appendChild(empty);
 
-                alert(
-                    'Barang dengan kode ' + kode +
-                    ' sudah ditambahkan. Silakan pilih barang lain.'
-                );
+    } else {
 
-                const row = input.closest('.baris-barang');
+        hasil.forEach(function (item) {
 
-                const namaInput = row.querySelector(
-                    '.nama-barang-input'
-                );
+            const option = document.createElement('div');
 
-                namaInput.value = '';
+            option.className = 'autocomplete-item';
 
-                input.value = '';
+            option.style.padding = '10px 12px';
+            option.style.cursor = 'pointer';
+            option.style.borderBottom = '1px solid #eee';
+            option.style.fontSize = '13px';
 
-                row.querySelector('.kode-label').textContent = '-';
+            option.textContent =
+                item.nama +
+                ' (' + item.kode + ')' +
+                ' - Stok: ' + item.stok +
+                ' ' + (item.satuan || '');
 
-                row.querySelector('.stok-label').textContent = '0';
+            option.addEventListener('mouseenter', function () {
+                option.style.background = '#edf4ff';
+            });
 
-                return false;
-            }
+            option.addEventListener('mouseleave', function () {
+                option.style.background = '#fff';
+            });
 
-            kodeTerpilih.push(kode);
-        }
+            // ==================================
+            // PILIH BARANG
+            // ==================================
 
-        return true;
+            option.addEventListener('mousedown', function (e) {
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                input.value = item.nama;
+
+                kodeInput.value = item.kode;
+
+                kodeLabel.textContent = item.kode;
+
+                stokLabel.textContent =
+                    item.stok + ' ' + (item.satuan || '');
+
+                qtyInput.max = item.stok;
+                qtyInput.value = 1;
+                qtyInput.setCustomValidity('');
+
+                // Hitung harga setelah barang dipilih
+                updateAmount(row);
+
+                tutupDropdown(input);
+
+                cekBarangSama();
+
+            });
+
+            list.appendChild(option);
+
+        });
+
     }
 
-    // ==========================================
-    // TAMBAH BARIS BARANG
-    // ==========================================
+    list.style.display = 'block';
 
-    if (btnTambah) {
+    aturPosisiDropdown(input, list);
+}
 
-        btnTambah.addEventListener('click', function () {
+// ==========================================
+// VALIDASI STOK
+// ==========================================
 
-            const barisPertama = daftarBarang.querySelector(
-                '.baris-barang'
+function validasiStok(row) {
+
+    const kodeInput = row.querySelector('.kode-barang-input');
+    const qtyInput = row.querySelector('.input-qty');
+
+    const kode = kodeInput.value;
+
+    const barang = cariBarang(kode);
+
+    qtyInput.setCustomValidity('');
+
+    if (!kode || !barang) {
+
+        qtyInput.setCustomValidity(
+            'Silakan pilih barang dari daftar autocomplete.'
+        );
+
+        return false;
+    }
+
+    const qty = Number(qtyInput.value);
+    const stok = Number(barang.stok);
+
+    if (!Number.isInteger(qty) || qty < 1) {
+
+        qtyInput.setCustomValidity(
+            'Jumlah barang keluar minimal 1.'
+        );
+
+        return false;
+    }
+
+    if (qty > stok) {
+
+        qtyInput.setCustomValidity(
+            'Jumlah keluar melebihi stok tersedia. Stok saat ini: ' + stok
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+// ==========================================
+// CEK BARANG DUPLIKAT
+// ==========================================
+
+function cekBarangSama() {
+
+    const semuaKode = daftarBarang.querySelectorAll(
+        '.kode-barang-input'
+    );
+
+    const kodeTerpilih = [];
+
+    for (const input of semuaKode) {
+
+        const kode = input.value;
+
+        if (!kode) continue;
+
+        if (kodeTerpilih.includes(kode)) {
+
+            alert(
+                'Barang dengan kode ' + kode +
+                ' sudah ditambahkan. Silakan pilih barang lain.'
             );
 
-            if (!barisPertama) return;
+            const row = input.closest('.baris-barang');
 
-            const barisBaru = barisPertama.cloneNode(true);
-
-            // Reset input nama
-            const namaInput = barisBaru.querySelector(
-                '.nama-barang-input'
-            );
+            const namaInput = row.querySelector('.nama-barang-input');
 
             namaInput.value = '';
 
-            namaInput._autocompleteList = null;
+            input.value = '';
 
-            // Reset kode
-            barisBaru.querySelector(
-                '.kode-barang-input'
-            ).value = '';
+            row.querySelector('.kode-label').textContent = '-';
 
-            // Reset label
-            barisBaru.querySelector(
-                '.kode-label'
-            ).textContent = '-';
+            row.querySelector('.stok-label').textContent = '0';
 
-            barisBaru.querySelector(
-                '.stok-label'
-            ).textContent = '0';
+            updateAmount(row);
 
-            // Reset jumlah
-            const qtyInput = barisBaru.querySelector('.input-qty');
+            return false;
+        }
 
-            qtyInput.value = 1;
-            qtyInput.removeAttribute('max');
-            qtyInput.setCustomValidity('');
+        kodeTerpilih.push(kode);
+    }
 
-            // Hapus dropdown bawaan hasil clone jika ada
-            const dropdownLama = barisBaru.querySelector(
-                '.autocomplete-list'
-            );
+    return true;
+}
 
-            if (dropdownLama) {
-                dropdownLama.remove();
-            }
+// ==========================================
+// TAMBAH BARIS BARANG
+// ==========================================
 
-            daftarBarang.appendChild(barisBaru);
+if (btnTambah) {
 
-            namaInput.focus();
+    btnTambah.addEventListener('click', function () {
 
-        });
+        const barisPertama = daftarBarang.querySelector(
+            '.baris-barang'
+        );
+
+        if (!barisPertama) return;
+
+        const barisBaru = barisPertama.cloneNode(true);
+
+        // Reset nama barang
+        const namaInput = barisBaru.querySelector(
+            '.nama-barang-input'
+        );
+
+        namaInput.value = '';
+        namaInput._autocompleteList = null;
+
+        // Reset kode barang
+        barisBaru.querySelector(
+            '.kode-barang-input'
+        ).value = '';
+
+        // Reset label kode
+        barisBaru.querySelector(
+            '.kode-label'
+        ).textContent = '-';
+
+        // Reset stok
+        barisBaru.querySelector(
+            '.stok-label'
+        ).textContent = '0';
+
+        // Reset jumlah
+        const qtyInput = barisBaru.querySelector('.input-qty');
+
+        qtyInput.value = 1;
+        qtyInput.removeAttribute('max');
+        qtyInput.setCustomValidity('');
+
+        // Reset harga pokok dan amount
+        barisBaru.querySelector(
+            '.harga-pokok-display'
+        ).value = 'Rp 0';
+
+        barisBaru.querySelector(
+            '.amount-display'
+        ).value = 'Rp 0';
+
+        // Hapus dropdown hasil clone
+        const dropdownLama = barisBaru.querySelector(
+            '.autocomplete-list'
+        );
+
+        if (dropdownLama) {
+            dropdownLama.remove();
+        }
+
+        daftarBarang.appendChild(barisBaru);
+
+        hitungTotalPengeluaran();
+
+        namaInput.focus();
+
+    });
+
+}
+
+// ==========================================
+// EVENT INPUT
+// ==========================================
+
+daftarBarang.addEventListener('input', function (e) {
+
+    // Ketik nama barang
+    if (e.target.classList.contains('nama-barang-input')) {
+
+        tampilkanAutocomplete(e.target);
 
     }
 
-    // ==========================================
-    // EVENT INPUT AUTOCOMPLETE
-    // ==========================================
+    // Ubah jumlah barang
+    if (e.target.classList.contains('input-qty')) {
 
-    daftarBarang.addEventListener('input', function (e) {
+        const row = e.target.closest('.baris-barang');
 
-        if (e.target.classList.contains('nama-barang-input')) {
+        validasiStok(row);
 
-            tampilkanAutocomplete(e.target);
+        updateAmount(row);
 
-        }
+    }
 
-        if (e.target.classList.contains('input-qty')) {
+});
 
-            const row = e.target.closest('.baris-barang');
+// ==========================================
+// EVENT FOCUS INPUT
+// ==========================================
 
-            validasiStok(row);
+daftarBarang.addEventListener('focusin', function (e) {
 
-        }
+    if (
+        e.target.classList.contains('nama-barang-input') &&
+        e.target.value.trim() !== ''
+    ) {
+        tampilkanAutocomplete(e.target);
+    }
 
-    });
+});
 
-    // ==========================================
-    // EVENT FOCUS INPUT
-    // ==========================================
+// ==========================================
+// HAPUS BARIS BARANG
+// ==========================================
 
-    daftarBarang.addEventListener('focusin', function (e) {
+daftarBarang.addEventListener('click', function (e) {
 
-        if (
-            e.target.classList.contains('nama-barang-input') &&
-            e.target.value.trim() !== ''
-        ) {
-            tampilkanAutocomplete(e.target);
-        }
+    if (e.target.classList.contains('hapus-barang')) {
 
-    });
+        const semuaBaris = daftarBarang.querySelectorAll(
+            '.baris-barang'
+        );
 
-    // ==========================================
-    // HAPUS BARIS BARANG
-    // ==========================================
+        if (semuaBaris.length <= 1) {
 
-    daftarBarang.addEventListener('click', function (e) {
+            alert('Minimal harus ada satu baris barang.');
 
-        if (e.target.classList.contains('hapus-barang')) {
-
-            const semuaBaris = daftarBarang.querySelectorAll(
-                '.baris-barang'
-            );
-
-            if (semuaBaris.length <= 1) {
-
-                alert('Minimal harus ada satu baris barang.');
-
-                return;
-            }
-
-            const row = e.target.closest('.baris-barang');
-
-            const input = row.querySelector('.nama-barang-input');
-
-            tutupDropdown(input);
-
-            if (input._autocompleteList) {
-                input._autocompleteList.remove();
-            }
-
-            row.remove();
-
-        }
-
-    });
-
-    // ==========================================
-    // KLIK DI LUAR DROPDOWN
-    // ==========================================
-
-    document.addEventListener('click', function (e) {
-
-        if (
-            e.target.closest('.autocomplete-wrapper') ||
-            e.target.closest('.autocomplete-list')
-        ) {
             return;
         }
 
-        document.querySelectorAll('.nama-barang-input').forEach(
-            function (input) {
-                tutupDropdown(input);
-            }
-        );
+        const row = e.target.closest('.baris-barang');
 
-    });
+        const input = row.querySelector('.nama-barang-input');
 
-    // ==========================================
-    // UPDATE POSISI SAAT SCROLL
-    // ==========================================
+        tutupDropdown(input);
 
-    window.addEventListener('scroll', function () {
+        if (input._autocompleteList) {
+            input._autocompleteList.remove();
+        }
 
-        document.querySelectorAll('.nama-barang-input').forEach(
-            function (input) {
+        row.remove();
 
-                const list = input._autocompleteList;
-
-                if (list && list.style.display === 'block') {
-
-                    aturPosisiDropdown(input, list);
-
-                }
-
-            }
-        );
-
-    }, true);
-
-    // ==========================================
-    // UPDATE POSISI SAAT RESIZE
-    // ==========================================
-
-    window.addEventListener('resize', function () {
-
-        document.querySelectorAll('.nama-barang-input').forEach(
-            function (input) {
-
-                const list = input._autocompleteList;
-
-                if (list && list.style.display === 'block') {
-
-                    aturPosisiDropdown(input, list);
-
-                }
-
-            }
-        );
-
-    });
-
-    // ==========================================
-    // VALIDASI SEBELUM FORM DIKIRIM
-    // ==========================================
-
-    if (form) {
-
-        form.addEventListener('submit', function (e) {
-
-            const semuaBaris = daftarBarang.querySelectorAll(
-                '.baris-barang'
-            );
-
-            let valid = true;
-
-            for (const row of semuaBaris) {
-
-                const namaInput = row.querySelector(
-                    '.nama-barang-input'
-                );
-
-                const kodeInput = row.querySelector(
-                    '.kode-barang-input'
-                );
-
-                if (
-                    !namaInput.value.trim() ||
-                    !kodeInput.value
-                ) {
-
-                    e.preventDefault();
-
-                    alert(
-                        'Silakan pilih nama barang dari daftar autocomplete.'
-                    );
-
-                    namaInput.focus();
-
-                    valid = false;
-
-                    break;
-                }
-
-                if (!validasiStok(row)) {
-
-                    e.preventDefault();
-
-                    row.querySelector('.input-qty').reportValidity();
-
-                    valid = false;
-
-                    break;
-                }
-
-            }
-
-            if (valid && !cekBarangSama()) {
-
-                e.preventDefault();
-
-                valid = false;
-
-            }
-
-            if (!valid) return;
-
-            // Tutup semua dropdown sebelum submit
-            document.querySelectorAll('.autocomplete-list').forEach(
-                function (list) {
-                    list.style.display = 'none';
-                }
-            );
-
-        });
+        hitungTotalPengeluaran();
 
     }
 
+});
+
+// ==========================================
+// KLIK DI LUAR DROPDOWN
+// ==========================================
+
+document.addEventListener('click', function (e) {
+
+    if (
+        e.target.closest('.autocomplete-wrapper') ||
+        e.target.closest('.autocomplete-list')
+    ) {
+        return;
+    }
+
+    document.querySelectorAll('.nama-barang-input').forEach(
+        function (input) {
+            tutupDropdown(input);
+        }
+    );
+
+});
+
+// ==========================================
+// UPDATE POSISI SAAT SCROLL
+// ==========================================
+
+window.addEventListener('scroll', function () {
+
+    document.querySelectorAll('.nama-barang-input').forEach(
+        function (input) {
+
+            const list = input._autocompleteList;
+
+            if (list && list.style.display === 'block') {
+                aturPosisiDropdown(input, list);
+            }
+
+        }
+    );
+
+}, true);
+
+// ==========================================
+// UPDATE POSISI SAAT RESIZE
+// ==========================================
+
+window.addEventListener('resize', function () {
+
+    document.querySelectorAll('.nama-barang-input').forEach(
+        function (input) {
+
+            const list = input._autocompleteList;
+
+            if (list && list.style.display === 'block') {
+                aturPosisiDropdown(input, list);
+            }
+
+        }
+    );
+
+});
+
+// ==========================================
+// VALIDASI SEBELUM FORM DIKIRIM
+// ==========================================
+
+if (form) {
+
+    form.addEventListener('submit', function (e) {
+
+        const semuaBaris = daftarBarang.querySelectorAll(
+            '.baris-barang'
+        );
+
+        let valid = true;
+
+        for (const row of semuaBaris) {
+
+            const namaInput = row.querySelector(
+                '.nama-barang-input'
+            );
+
+            const kodeInput = row.querySelector(
+                '.kode-barang-input'
+            );
+
+            if (
+                !namaInput.value.trim() ||
+                !kodeInput.value
+            ) {
+
+                e.preventDefault();
+
+                alert(
+                    'Silakan pilih nama barang dari daftar autocomplete.'
+                );
+
+                namaInput.focus();
+
+                valid = false;
+
+                break;
+            }
+
+            if (!validasiStok(row)) {
+
+                e.preventDefault();
+
+                row.querySelector('.input-qty').reportValidity();
+
+                valid = false;
+
+                break;
+            }
+
+        }
+
+        if (valid && !cekBarangSama()) {
+
+            e.preventDefault();
+
+            valid = false;
+
+        }
+
+        if (!valid) return;
+
+        // Tutup semua dropdown sebelum submit
+        document.querySelectorAll('.autocomplete-list').forEach(
+            function (list) {
+                list.style.display = 'none';
+            }
+        );
+
     });
+
+}
+
+// ==========================================
+// INISIALISASI TOTAL
+// ==========================================
+
+daftarBarang.querySelectorAll('.baris-barang').forEach(function (row) {
+    updateAmount(row);
+});
+
+hitungTotalPengeluaran();
+
+});
 
 </script>
 

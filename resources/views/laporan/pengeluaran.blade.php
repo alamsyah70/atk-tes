@@ -2,6 +2,72 @@
 
 @section('container')
 <style>
+    /* PAGINATION SERAGAM */
+    .laporan-page .pagination-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+        margin-bottom: 15px;
+    }
+
+    .laporan-page .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .laporan-page .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .laporan-page .page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        color: #0d6efd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .laporan-page .page-btn:hover {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .laporan-page .page-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .laporan-page .page-btn.disabled {
+        color: #adb5bd;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    @media (max-width: 576px) {
+        .laporan-page .pagination-container {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
     /* ==============================
     HALAMAN LAPORAN
     ============================== */
@@ -355,50 +421,158 @@
         <div class="report-card-body">
             <div class="table-responsive">
                 <table class="table laporan-table">
-                    <thead>
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Tanggal</th>
+                        <th>No. Pengeluaran</th>
+                        <th>Cabang</th>
+                        <th>Nama Pengambil</th>
+                        <th>Divisi</th>
+                        <th>Kode Barang</th>
+                        <th>Nama Barang</th>
+                        <th>Kategori</th>
+                        <th>Qty</th>
+                        <th>Satuan</th>
+                        <th>Harga Pokok</th>
+                        <th>Jumlah Harga Pokok</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($data as $index => $item)
                         <tr>
-                            <th>No</th>
-                            <th>Tanggal</th>
-                            <th>No. Pengeluaran</th>
-                            <th>Cabang</th>
-                            <th>Nama Pengambil</th>
-                            <th>Divisi</th>
-                            <th>Kode Barang</th>
-                            <th>Nama Barang</th>
-                            <th>Kategori</th>
-                            <th>Qty</th>
-                            <th>Satuan</th>
+                            <td>{{ $data->firstItem() + $index }}</td>
+
+                            <td>
+                                {{ \Carbon\Carbon::parse($item->tanggal)->format('d-m-Y') }}
+                            </td>
+
+                            <td>{{ $item->nomor_pengeluaran ?? '-' }}</td>
+                            <td>{{ $item->nama_cabang ?? '-' }}</td>
+                            <td>{{ $item->nama_pengambil ?? '-' }}</td>
+                            <td>{{ $item->divisi ?? '-' }}</td>
+                            <td>{{ $item->kode_barang }}</td>
+                            <td class="nama-barang">{{ $item->nama_barang }}</td>
+                            <td>{{ $item->kategori ?? '-' }}</td>
+
+                            <td class="text-end">
+                                {{ number_format($item->qty, 0, ',', '.') }}
+                            </td>
+
+                            <td>{{ $item->satuan ?? '-' }}</td>
+
+                            <td class="text-end">
+                                Rp {{ number_format($item->harga_pokok ?? 0, 0, ',', '.') }}
+                            </td>
+
+                            <td class="text-end">
+                                <strong>
+                                    Rp {{ number_format($item->jumlah_harga_pokok ?? 0, 0, ',', '.') }}
+                                </strong>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($data as $index => $item)
-                            <tr>
-                                <td>{{ $data->firstItem() + $index }}</td>
-                                <td>{{ \Carbon\Carbon::parse($item->tanggal)->format('d-m-Y') }}</td>
-                                <td>{{ $item->nomor_pengeluaran ?? '-' }}</td>
-                                <td>{{ $item->nama_cabang ?? '-' }}</td>
-                                <td>{{ $item->nama_pengambil ?? '-' }}</td>
-                                <td>{{ $item->divisi ?? '-' }}</td>
-                                <td>{{ $item->kode_barang }}</td>
-                                <td class="nama-barang">{{ $item->nama_barang }}</td>
-                                <td>{{ $item->kategori ?? '-' }}</td>
-                                <td class="text-end">{{ number_format($item->qty, 0, ',', '.') }}</td>
-                                <td>{{ $item->satuan ?? '-' }}</td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="11" class="empty-data">
-                                    Tidak ada data pengeluaran barang.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
+                    @empty
+                        <tr>
+                            <td colspan="13" class="empty-data">
+                                Tidak ada data pengeluaran barang.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
                 </table>
             </div>
+            <div class="d-flex justify-content-end mt-3">
+    <div style="
+        min-width: 300px;
+        padding: 15px 20px;
+        background: #f0f5fb;
+        border: 1px solid #dce7f5;
+        border-radius: 9px;
+    ">
+        <div style="font-size: 12px; color: #64748b;">
+            TOTAL HARGA POKOK PENGELUARAN
+        </div>
 
-            <div class="pagination-wrapper">
-                {{ $data->links() }}
-            </div>
+        <div style="
+            margin-top: 5px;
+            color: #174f91;
+            font-size: 21px;
+            font-weight: 700;
+        ">
+            Rp {{ number_format($totalHargaPokok ?? 0, 0, ',', '.') }}
+        </div>
+
+        <small class="text-muted">
+            Berdasarkan seluruh data yang sesuai filter.
+        </small>
+    </div>
+</div>
+
+            @if ($data->hasPages())
+    @php
+        $current = $data->currentPage();
+        $last = $data->lastPage();
+        $start = max(1, $current - 1);
+        $end = min($last, $current + 1);
+    @endphp
+
+    <div class="pagination-container">
+
+        <div class="pagination-info">
+            Menampilkan {{ $data->firstItem() ?? 0 }}
+            sampai {{ $data->lastItem() ?? 0 }}
+            dari {{ $data->total() }} detail barang
+        </div>
+
+        <div class="pagination-links">
+
+            @if ($data->onFirstPage())
+                <span class="page-btn disabled">‹ Previous</span>
+            @else
+                <a href="{{ $data->previousPageUrl() }}" class="page-btn">
+                    ‹ Previous
+                </a>
+            @endif
+
+            @if ($start > 1)
+                <a href="{{ $data->url(1) }}" class="page-btn">1</a>
+
+                @if ($start > 2)
+                    <span class="page-btn disabled">...</span>
+                @endif
+            @endif
+
+            @foreach (range($start, $end) as $page)
+                @if ($page == $current)
+                    <span class="page-btn active">{{ $page }}</span>
+                @else
+                    <a href="{{ $data->url($page) }}" class="page-btn">
+                        {{ $page }}
+                    </a>
+                @endif
+            @endforeach
+
+            @if ($end < $last)
+                @if ($end < $last - 1)
+                    <span class="page-btn disabled">...</span>
+                @endif
+
+                <a href="{{ $data->url($last) }}" class="page-btn">
+                    {{ $last }}
+                </a>
+            @endif
+
+            @if ($data->hasMorePages())
+                <a href="{{ $data->nextPageUrl() }}" class="page-btn">
+                    Next ›
+                </a>
+            @else
+                <span class="page-btn disabled">Next ›</span>
+            @endif
+
+        </div>
+    </div>
+@endif
         </div>
     </div>
 </div>

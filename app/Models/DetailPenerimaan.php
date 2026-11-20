@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Barang;
 
 class DetailPenerimaan extends Model
 {
@@ -21,5 +22,10 @@ class DetailPenerimaan extends Model
     public function penerimaan()
     {
         return $this->belongsTo(Penerimaan::class);
+    }
+
+    public function barang()
+    {
+        return $this->belongsTo(Barang::class, 'barang_id');
     }
 }

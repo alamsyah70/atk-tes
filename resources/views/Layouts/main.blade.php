@@ -6,7 +6,1375 @@
   <title>ATK Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
     rel="stylesheet">
-  <style>
+<style>
+    /* HALAMAN PENERIMAAN BARANG */
+
+    .receipt-page {
+        width: 100%;
+    }
+
+    .receipt-badge {
+        background: #eaf3ff;
+        color: #1769d2;
+        padding: 10px 15px;
+        border-radius: 9px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .receipt-card {
+        background: #fff;
+        border: 1px solid #e7edf5;
+        border-radius: 14px;
+        padding: 22px;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 24px rgba(23,62,116,.05);
+    }
+
+    .receipt-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #102a56;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .receipt-title span {
+        color: #1769d2;
+        font-size: 19px;
+    }
+
+    .receipt-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+    }
+
+    .receipt-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .receipt-field label {
+        font-size: 12px;
+        font-weight: 700;
+        color: #33445e;
+    }
+
+    .receipt-field label span {
+        color: #e05252;
+    }
+
+    .receipt-field input,
+    .receipt-field select,
+    .receipt-field textarea {
+        width: 100%;
+        padding: 11px 13px;
+        border: 1px solid #dce5f0;
+        border-radius: 8px;
+        outline: none;
+        font-size: 12px;
+        color: #24344d;
+        background: #fff;
+    }
+
+    .receipt-field input:focus,
+    .receipt-field select:focus,
+    .receipt-field textarea:focus {
+        border-color: #1769d2;
+        box-shadow: 0 0 0 3px rgba(23,105,210,.08);
+    }
+
+    .receipt-field textarea {
+        resize: vertical;
+    }
+
+    .full-width {
+        grid-column: 1 / -1;
+    }
+
+    .receipt-table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 15px;
+    }
+
+    .receipt-table-header .receipt-title {
+        margin-bottom: 5px;
+    }
+
+    .receipt-table-header p {
+        color: #7c8ba3;
+        font-size: 11px;
+        margin: 0;
+    }
+
+    .receipt-add-btn {
+        background: #1769d2;
+        color: white;
+        border: none;
+        padding: 11px 15px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .receipt-add-btn:hover,
+    .receipt-save:hover {
+        background: #1059b7;
+    }
+
+    .receipt-table-scroll {
+        overflow-x: auto;
+    }
+
+    .receipt-table {
+        width: 100%;
+        min-width: 850px;
+        border-collapse: collapse;
+    }
+
+    .receipt-table th {
+        background: #f2f7ff;
+        color: #60728c;
+        padding: 13px 10px;
+        text-align: left;
+        font-size: 10px;
+    }
+
+    .receipt-table td {
+        padding: 9px 7px;
+        border-bottom: 1px solid #edf1f6;
+    }
+
+    .receipt-table td input {
+        width: 100%;
+        min-width: 65px;
+        padding: 9px 8px;
+        border: 1px solid #dce5f0;
+        border-radius: 6px;
+        font-size: 11px;
+        outline: none;
+    }
+
+    .receipt-table td input:focus {
+        border-color: #1769d2;
+    }
+
+    .receipt-table td input[readonly] {
+        background: #f3f7fc;
+        color: #1769d2;
+        font-weight: 700;
+    }
+
+    .row-delete {
+        border: none;
+        background: #ffeded;
+        color: #dc2626;
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .row-delete:hover {
+        background: #dc2626;
+        color: white;
+    }
+
+
+    .receipt-total {
+    margin-top: 15px;
+    padding: 13px 18px;
+    background: #f5f9ff;
+    border-radius: 9px;
+
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.2fr;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+    box-sizing: border-box;
+    }
+
+    .receipt-total > div {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+    }
+
+    .receipt-total span {
+        color: #7c8ba3;
+        font-size: 10px;
+        white-space: nowrap;
+    }
+
+    .receipt-total strong {
+        color: #102a56;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .receipt-total .grand-total {
+        border-left: 1px solid #1769d2;
+        padding-left: 18px;
+    }
+
+    .receipt-total .grand-total h2 {
+        margin: 0;
+        color: #1769d2;
+        font-size: 19px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    /* Tampilan HP */
+    @media (max-width: 600px) {
+        .receipt-total {
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 12px;
+        }
+
+        .receipt-total .grand-total {
+            grid-column: 1 / -1;
+            border-left: none;
+            border-top: 1px solid #1769d2;
+            padding: 10px 0 0;
+        }
+    }
+
+    .grand-total h2 {
+        color: #1769d2;
+        font-size: 22px;
+        margin: 0;
+    }
+
+    .receipt-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-bottom: 25px;
+    }
+
+    .receipt-actions a,
+    .receipt-actions button {
+        padding: 11px 17px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .receipt-cancel,
+    .receipt-reset {
+        border: 1px solid #dce5f0;
+        color: #52647c;
+        background: white;
+    }
+
+    .receipt-save {
+        border: none;
+        background: #1769d2;
+        color: white;
+    }
+
+    @media(max-width: 700px) {
+        .receipt-info-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .full-width {
+            grid-column: auto;
+        }
+
+        .receipt-total {
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .receipt-total .grand-total {
+            width: 100%;
+            border-left: none;
+            border-top: 2px solid #1769d2;
+            padding: 15px 0 0;
+        }
+
+        .receipt-table-header {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .receipt-actions {
+            flex-wrap: wrap;
+        }
+    }
+
+
+        /* =====================================
+        SEARCH HISTORI PENERIMAAN
+        ===================================== */
+
+        .receipt-page .search-container {
+            width: 50%;
+            max-width: 600px;
+            margin: 10 0 20px auto;
+        }
+
+        .receipt-page .search-form {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .receipt-page .search-input-wrapper {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .receipt-page .search-icon {
+            position: absolute;
+            left: 15px;
+            font-size: 23px;
+            color: #94a3b8;
+            pointer-events: none;
+        }
+
+        .receipt-page .search-input {
+            box-sizing: border-box;
+            width: 100%;
+            height: 44px;
+            padding: 0 42px;
+            border: 1px solid #dbe2ea;
+            border-radius: 9px;
+            outline: none;
+            background: #fff;
+            color: #334155;
+            font-size: 13px;
+            transition: .2s;
+        }
+
+        .receipt-page .search-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+        }
+
+        .receipt-page .search-input::placeholder {
+            color: #94a3b8;
+        }
+
+        .receipt-page .search-clear {
+            position: absolute;
+            right: 13px;
+            color: #94a3b8;
+            font-size: 22px;
+            text-decoration: none;
+        }
+
+        .receipt-page .search-clear:hover {
+            color: #ef4444;
+        }
+
+        .receipt-page .search-button {
+            height: 44px;
+            padding: 0 22px;
+            border: none;
+            border-radius: 9px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            transition: .2s;
+            margin-left: 4px;
+        }
+
+        .receipt-page .search-button:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        /* =====================================
+        TABEL HISTORI PENERIMAAN
+        ===================================== */
+
+        .receipt-page .table-responsive {
+            border-radius: 8px;
+        }
+
+        .receipt-page .table {
+            margin-bottom: 0;
+            font-size: 12px;
+            color: #34445d;
+            vertical-align: middle;
+        }
+
+        .receipt-page .table thead th {
+            padding: 12px 13px;
+            background: #f4f7fc;
+            color: #60738f;
+            border-bottom: 1px solid #e4eaf2;
+            border-top: none;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .35px;
+            white-space: nowrap;
+        }
+
+        .receipt-page .table tbody td {
+            padding: 11px 13px;
+            border-color: #edf1f6;
+        }
+
+        .receipt-page .table tbody tr:hover {
+            background: #f8fbff;
+        }
+
+        .receipt-page .table .btn {
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* =====================================
+        PAGINATION
+        ===================================== */
+
+        .receipt-page .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 18px;
+            padding: 12px 0;
+        }
+
+        .receipt-page .pagination-info {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .receipt-page .pagination-links {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .receipt-page .page-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 34px;
+            height: 34px;
+            padding: 0 10px;
+            border: 1px solid #dbe2ea;
+            border-radius: 6px;
+            color: #334155;
+            background: #fff;
+            font-size: 13px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .receipt-page .page-btn:hover {
+            background: #eff6ff;
+            color: #2563eb;
+        }
+
+        .receipt-page .page-btn.active {
+            background: #2563eb;
+            color: #fff;
+            border-color: #2563eb;
+        }
+
+        .receipt-page .page-btn.disabled {
+            color: #94a3b8;
+            background: #f1f5f9;
+            cursor: not-allowed;
+        }
+
+        /* =====================================
+        RESPONSIVE
+        ===================================== */
+
+        @media (max-width: 768px) {
+            .receipt-page .receipt-card {
+                padding: 13px;
+            }
+
+            .receipt-page .receipt-table {
+                min-width: 850px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .receipt-page .search-container {
+                width: 100%;
+                max-width: none;
+            }
+
+            .receipt-page .search-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .receipt-page .search-button {
+                width: 100%;
+            }
+
+            .receipt-page .pagination-container {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+
+        /* AUTOCOMPLETE MASTER BARANG */
+
+    .barang-autocomplete {
+        position: relative;
+        width: 100%;
+        min-width: 190px;
+    }
+
+    .barang-autocomplete input {
+        width: 100%;
+        min-width: 190px;
+        padding: 9px 8px;
+        border: 1px solid #dce5f0;
+        border-radius: 6px;
+        font-size: 11px;
+        outline: none;
+    }
+
+    .barang-autocomplete input:focus {
+        border-color: #1769d2;
+    }
+
+    .barang-suggestions {
+        display: none;
+        position: fixed;
+        width: 320px;
+        max-width: calc(100vw - 20px);
+        max-height: 250px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #dce5f0;
+        border-radius: 8px;
+        box-shadow: 0 8px 25px rgba(0,0,0,.18);
+        z-index: 999999;
+    }
+
+    .barang-suggestion-item {
+        padding: 10px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #edf1f6;
+        background: #fff;
+    }
+
+    .barang-suggestion-item:hover {
+        background: #f0f6ff;
+    }
+
+    .barang-suggestion-item strong {
+        display: block;
+        color: #1769d2;
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+
+    .barang-suggestion-item small {
+        display: block;
+        color: #64748b;
+        font-size: 10px;
+    }
+
+    .barang-suggestion-empty {
+        padding: 12px;
+        color: #94a3b8;
+        font-size: 11px;
+    }
+
+    .pagination-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+    }
+
+    .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        color: #0d6efd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .page-btn:hover {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .page-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .page-btn.disabled {
+        color: #adb5bd;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+    .modal {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1055;
+    background-color: rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(1px);
+    }
+
+    .modal-dialog {
+        margin-left: auto;
+        margin-right: auto;
+        
+    }
+
+    thead th {
+    vertical-align: middle;
+    white-space: nowrap;
+    }
+
+    thead th select.form-select {
+        min-width: 150px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    thead th form {
+        margin: 0;
+    }
+
+    /* PAGINATION */
+    .pagination-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+        margin-bottom: 15px;
+    }
+
+    .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        color: #0d6efd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .page-btn:hover {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .page-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .page-btn.disabled {
+        color: #adb5bd;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    @media (max-width: 576px) {
+        .pagination-container {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+
+    .search-container {
+        width: 50%;
+        margin: 15px 0 20px auto;
+    }
+
+    .search-form {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+        flex: 1;
+        display: flex;
+        align-items: center;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 15px;
+        font-size: 23px;
+        color: #94a3b8;
+        pointer-events: none;
+    }
+
+    .search-input {
+        width: 99%;
+        height: 44px;
+        padding: 0 42px;
+        border: 1px solid #dbe2ea;
+        border-radius: 9px;
+        outline: none;
+        background: #fff;
+        color: #334155;
+        font-size: 13px;
+        transition: .2s;
+    }
+
+    .search-input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+    }
+
+    .search-clear {
+        position: absolute;
+        right: 13px;
+        color: #94a3b8;
+        font-size: 22px;
+        text-decoration: none;
+    }
+
+    .search-clear:hover {
+        color: #ef4444;
+    }
+
+    .search-button {
+        height: 44px;
+        padding: 0 22px;
+        border: none;
+        border-radius: 9px;
+        background: #2563eb;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .search-button:hover {
+        background: #1d4ed8;
+    }
+
+    .modal {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1055;
+        background-color: rgba(0, 0, 0, .05);
+        backdrop-filter: blur(1px);
+    }
+
+    .modal-dialog {
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    @media (max-width: 768px) {
+        .search-container {
+            width: 100%;
+            margin: 15px 0 20px;
+        }
+    }
+
+    @media (max-width: 500px) {
+        .search-form {
+            flex-wrap: wrap;
+        }
+
+        .search-input-wrapper {
+            flex-basis: 100%;
+        }
+
+        .search-button {
+            flex: 1;
+        }
+    }
+    .panduan-page {
+        --primary: #2563eb;
+        --primary-dark: #1e40af;
+        --text: #1e293b;
+        --muted: #64748b;
+        --border: #e2e8f0;
+        --surface: #ffffff;
+        color: var(--text);
+        padding: 10px 0 35px;
+    }
+
+    .panduan-page * {
+        box-sizing: border-box;
+    }
+
+    .panduan-hero {
+        background: linear-gradient(135deg, #1e40af, #2563eb);
+        color: white;
+        padding: 32px;
+        border-radius: 16px;
+        margin-bottom: 25px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .panduan-hero::after {
+        content: "📦";
+        position: absolute;
+        right: 35px;
+        top: 20px;
+        font-size: 90px;
+        opacity: .15;
+    }
+
+    .panduan-hero h2 {
+        font-size: 25px;
+        font-weight: 800;
+        margin: 0 0 10px;
+    }
+
+    .panduan-hero p {
+        font-size: 14px;
+        line-height: 1.7;
+        max-width: 650px;
+        margin: 0;
+        color: #dbeafe;
+    }
+
+    .panduan-label {
+        display: inline-block;
+        background: rgba(255,255,255,.18);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .5px;
+        margin-bottom: 12px;
+    }
+
+    .panduan-section-title {
+        margin: 30px 0 15px;
+    }
+
+    .panduan-section-title h3 {
+        font-size: 19px;
+        font-weight: 800;
+        margin: 0 0 5px;
+    }
+
+    .panduan-section-title p {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0;
+    }
+
+    .panduan-role {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 15px;
+        overflow: hidden;
+        margin-bottom: 22px;
+        box-shadow: 0 4px 15px rgba(15,23,42,.04);
+    }
+
+    .panduan-role-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 20px;
+        border-bottom: 1px solid var(--border);
+        background: #f8fafc;
+    }
+
+    .panduan-role-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 23px;
+        flex-shrink: 0;
+    }
+
+    .superadmin .panduan-role-icon {
+        background: #dbeafe;
+    }
+
+    .admin-gerai .panduan-role-icon {
+        background: #dcfce7;
+    }
+
+    .panduan-role-header h4 {
+        margin: 0 0 4px;
+        font-size: 16px;
+        font-weight: 800;
+    }
+
+    .panduan-role-header p {
+        color: var(--muted);
+        margin: 0;
+        font-size: 12px;
+    }
+
+    .panduan-content {
+        padding: 20px;
+    }
+
+    .panduan-flow {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 13px;
+    }
+
+    .panduan-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        border: 1px solid var(--border);
+        border-radius: 11px;
+        padding: 15px;
+        transition: .2s;
+        background: white;
+    }
+
+    .panduan-item:hover {
+        border-color: #93c5fd;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 12px rgba(37,99,235,.07);
+    }
+
+    .panduan-number {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        background: #eff6ff;
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 13px;
+        flex-shrink: 0;
+    }
+
+    .panduan-item h5 {
+        font-size: 13px;
+        font-weight: 800;
+        margin: 1px 0 5px;
+    }
+
+    .panduan-item p {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+        margin: 0;
+    }
+
+    .panduan-note {
+        margin-top: 16px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+        padding: 13px 15px;
+        color: #1e40af;
+        font-size: 12px;
+        line-height: 1.6;
+    }
+
+    .panduan-process {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 15px;
+        padding: 22px;
+        margin-top: 25px;
+    }
+
+    .panduan-process h4 {
+        font-size: 16px;
+        font-weight: 800;
+        margin: 0 0 18px;
+    }
+
+    .panduan-process-flow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .panduan-process-step {
+        background: #f1f5f9;
+        border: 1px solid var(--border);
+        padding: 12px 16px;
+        border-radius: 10px;
+        text-align: center;
+        min-width: 130px;
+    }
+
+    .panduan-process-step strong {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+
+    .panduan-process-step small {
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    .panduan-arrow {
+        color: var(--primary);
+        font-size: 20px;
+        font-weight: 800;
+    }
+
+    .panduan-footer {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 25px 10px 0;
+    }
+
+    @media(max-width: 650px) {
+        .panduan-hero {
+            padding: 23px;
+        }
+
+        .panduan-hero h2 {
+            font-size: 21px;
+        }
+
+        .panduan-hero::after {
+            right: 10px;
+            font-size: 65px;
+        }
+
+        .panduan-flow {
+            grid-template-columns: 1fr;
+        }
+
+        .panduan-process-flow {
+            flex-direction: column;
+        }
+
+        .panduan-arrow {
+            transform: rotate(90deg);
+        }
+
+        .panduan-process-step {
+            width: 100%;
+        }
+    }
+    /* =====================================
+    DROPDOWN FILTER STATUS DASHBOARD
+    ===================================== */
+
+    .status-filter {
+        position: relative;
+        min-width: 135px;
+    }
+
+    .status-filter select {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        min-width: 135px;
+        height: 34px;
+        padding: 6px 32px 6px 12px;
+
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: .2px;
+
+        color: #344054;
+        background-color: #f8fafc;
+
+        border: 1px solid #dbe3ef;
+        border-radius: 8px;
+
+        cursor: pointer;
+        outline: none;
+
+        transition: all .25s ease;
+    }
+
+    /* Icon dropdown */
+    .status-filter::after {
+        content: "";
+        position: absolute;
+        right: 12px;
+        top: 50%;
+
+        width: 7px;
+        height: 7px;
+
+        border-right: 2px solid #64748b;
+        border-bottom: 2px solid #64748b;
+
+        transform: translateY(-70%) rotate(45deg);
+        pointer-events: none;
+    }
+
+    /* Hover */
+    .status-filter select:hover {
+        background-color: #ffffff;
+        border-color: #93b4e8;
+    }
+
+    /* Focus */
+    .status-filter select:focus {
+        background-color: #ffffff;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, .13);
+    }
+
+    /* Option */
+    .status-filter select option {
+        padding: 10px;
+        font-size: 12px;
+        font-weight: 500;
+        background: #ffffff;
+        color: #344054;
+    }
+  /* SEARCH DASHBOARD */
+  .search-container {
+      width: 50%;
+      margin: 15px 0 20px;
+  }
+
+  .search-form {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+  }
+
+  .search-input-wrapper {
+      position: relative;
+      flex: 1;
+      display: flex;
+      align-items: center;
+  }
+
+  .search-icon {
+      position: absolute;
+      left: 15px;
+      font-size: 23px;
+      color: #94a3b8;
+      pointer-events: none;
+  }
+
+  .search-input {
+      width: 99%;
+      height: 44px;
+      padding: 0 42px;
+      border: 1px solid #dbe2ea;
+      border-radius: 9px;
+      outline: none;
+      background: #fff;
+      color: #334155;
+      font-size: 13px;
+      transition: .2s;
+  }
+
+  .search-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  }
+
+  .search-input::placeholder {
+      color: #94a3b8;
+  }
+
+  .search-clear {
+      position: absolute;
+      right: 13px;
+      color: #94a3b8;
+      font-size: 22px;
+      text-decoration: none;
+  }
+
+  .search-clear:hover {
+      color: #ef4444;
+  }
+
+  .search-button {
+      height: 44px;
+      padding: 0 22px;
+      border: none;
+      border-radius: 9px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: .2s;
+  }
+
+  .search-button:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+  }
+
+  .search-button span {
+      font-size: 19px;
+  }
+
+  @media (max-width: 600px) {
+      .search-form {
+          flex-direction: column;
+          align-items: stretch;
+      }
+
+      .search-button {
+          justify-content: center;
+      }
+  }
+
+  .pagination-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+      padding: 12px 0;
+  }
+
+  .pagination-info {
+      font-size: 13px;
+      color: #64748b;
+  }
+
+  .pagination-links {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+  }
+
+  .page-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid #dbe2ea;
+      border-radius: 6px;
+      color: #334155;
+      background: #fff;
+      font-size: 13px;
+      text-decoration: none;
+      cursor: pointer;
+  }
+
+  .page-btn:hover {
+      background: #eff6ff;
+      color: #2563eb;
+  }
+
+  .page-btn.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+  }
+
+  .page-btn.disabled {
+      color: #94a3b8;
+      background: #f1f5f9;
+      cursor: not-allowed;
+  }
 
     .nav > a {
         border: 0;
@@ -228,7 +1596,7 @@
       .section-head .btn { white-space: nowrap; }
       .table-panel .panel-head { flex-wrap: wrap; gap: 12px; }
     }
-  </style>
+</style>
 
 </head>
 <body>
@@ -273,6 +1641,10 @@
             Kelola Barang
         </a>
     @endhasrole
+    <a href="/databarang/barangs"
+           class="{{ request()->is('databarang/barangs') ? 'active' : '' }}">
+            Master Barang
+        </a>
         <a href="/databarang/penerimaan-barang"
            class="{{ request()->is('databarang/penerimaan-barang') ? 'active' : '' }}">
             Penerimaan Barang
@@ -322,6 +1694,11 @@
         <a href="{{ route('laporan.pengeluaran') }}"
            class="{{ request()->routeIs('laporan.pengeluaran*') ? 'active' : '' }}">
             Laporan Pengeluaran Barang
+        </a>
+
+        <a href="{{ route('laporan.penyesuaian') }}"
+           class="{{ request()->routeIs('laporan.penyesuaian*') ? 'active' : '' }}">
+            Laporan Penyesuaian Stok
         </a>
     </div>
 </div>

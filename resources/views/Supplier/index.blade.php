@@ -3,6 +3,74 @@
 @section('container')
 
 <style>
+
+    /* PAGINATION */
+    .pagination-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+        margin-bottom: 15px;
+    }
+
+    .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        color: #0d6efd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .page-btn:hover {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .page-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .page-btn.disabled {
+        color: #adb5bd;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    @media (max-width: 576px) {
+        .pagination-container {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+
     /* SEARCH SUPPLIER */
     .search-container {
         width: 50%;
@@ -341,6 +409,7 @@
                                                 name="nama_supplier"
                                                 class="form-control"
                                                 value="{{ $supplier->nama_supplier }}"
+                                                oninput="this.value = this.value.toUpperCase()"
                                                 required>
                                         </div>
 
@@ -474,9 +543,89 @@
 
         </table>
 
-        <div class="d-flex justify-content-end">
-            {{ $suppliers->links() }}
+        
+@if ($suppliers->hasPages())
+    @php
+        $current = $suppliers->currentPage();
+        $last = $suppliers->lastPage();
+        $start = max(1, $current - 1);
+        $end = min($last, $current + 1);
+    @endphp
+
+    <div class="pagination-container">
+
+        <div class="pagination-info">
+            Menampilkan {{ $suppliers->firstItem() ?? 0 }}
+            sampai {{ $suppliers->lastItem() ?? 0 }}
+            dari {{ $suppliers->total() }} supplier
         </div>
+
+        <div class="pagination-links">
+
+            {{-- PREVIOUS --}}
+            @if ($suppliers->onFirstPage())
+                <span class="page-btn disabled">‹ Previous</span>
+            @else
+                <a href="{{ $suppliers->previousPageUrl() }}"
+                   class="page-btn">
+                    ‹ Previous
+                </a>
+            @endif
+
+            {{-- HALAMAN PERTAMA --}}
+            @if ($start > 1)
+                <a href="{{ $suppliers->url(1) }}"
+                   class="page-btn">1</a>
+
+                @if ($start > 2)
+                    <span class="page-btn disabled">...</span>
+                @endif
+            @endif
+
+            {{-- HALAMAN AKTIF --}}
+            @foreach (range($start, $end) as $page)
+                @if ($page == $current)
+                    <span class="page-btn active">
+                        {{ $page }}
+                    </span>
+                @else
+                    <a href="{{ $suppliers->url($page) }}"
+                       class="page-btn">
+                        {{ $page }}
+                    </a>
+                @endif
+            @endforeach
+
+            {{-- HALAMAN TERAKHIR --}}
+            @if ($end < $last)
+
+                @if ($end < $last - 1)
+                    <span class="page-btn disabled">...</span>
+                @endif
+
+                <a href="{{ $suppliers->url($last) }}"
+                   class="page-btn">
+                    {{ $last }}
+                </a>
+
+            @endif
+
+            {{-- NEXT --}}
+            @if ($suppliers->hasMorePages())
+                <a href="{{ $suppliers->nextPageUrl() }}"
+                   class="page-btn">
+                    Next ›
+                </a>
+            @else
+                <span class="page-btn disabled">
+                    Next ›
+                </span>
+            @endif
+
+        </div>
+    </div>
+@endif
+
 
     </div>
 </div>
@@ -510,6 +659,7 @@
                             name="kode_supplier"
                             class="form-control"
                             value="{{ old('kode_supplier') }}"
+                            oninput="this.value = this.value.toUpperCase()"
                             required>
                     </div>
 
@@ -519,6 +669,7 @@
                             name="nama_supplier"
                             class="form-control"
                             value="{{ old('nama_supplier') }}"
+                            oninput="this.value = this.value.toUpperCase()"
                             required>
                     </div>
 

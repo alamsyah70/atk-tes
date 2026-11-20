@@ -223,14 +223,70 @@
         color: #8996a8 !important;
     }
 
-    .laporan-page .pagination-wrapper {
+    .laporan-page .pagination-container {
         display: flex;
-        justify-content: flex-end;
-        margin-top: 18px;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+        margin-bottom: 15px;
     }
 
-    .laporan-page .pagination {
-        margin-bottom: 0;
+    .laporan-page .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .laporan-page .pagination-links {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .laporan-page .page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        background: #fff;
+        color: #0d6efd;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.2s ease;
+    }
+
+    .laporan-page .page-btn:hover {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    .laporan-page .page-btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .laporan-page .page-btn.disabled {
+        color: #adb5bd;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    @media (max-width: 576px) {
+        .laporan-page .pagination-container {
+            flex-direction: column;
+            align-items: flex-start;
+        }
     }
 
     /* RESPONSIVE */
@@ -399,9 +455,71 @@
                 </table>
             </div>
 
-            <div class="pagination-wrapper">
-                {{ $data->links() }}
-            </div>
+            @if ($data->hasPages())
+    @php
+        $current = $data->currentPage();
+        $last = $data->lastPage();
+        $start = max(1, $current - 1);
+        $end = min($last, $current + 1);
+    @endphp
+
+    <div class="pagination-container">
+
+        <div class="pagination-info">
+            Menampilkan {{ $data->firstItem() ?? 0 }}
+            sampai {{ $data->lastItem() ?? 0 }}
+            dari {{ $data->total() }} detail barang
+        </div>
+
+        <div class="pagination-links">
+
+            @if ($data->onFirstPage())
+                <span class="page-btn disabled">‹ Previous</span>
+            @else
+                <a href="{{ $data->previousPageUrl() }}" class="page-btn">
+                    ‹ Previous
+                </a>
+            @endif
+
+            @if ($start > 1)
+                <a href="{{ $data->url(1) }}" class="page-btn">1</a>
+
+                @if ($start > 2)
+                    <span class="page-btn disabled">...</span>
+                @endif
+            @endif
+
+            @foreach (range($start, $end) as $page)
+                @if ($page == $current)
+                    <span class="page-btn active">{{ $page }}</span>
+                @else
+                    <a href="{{ $data->url($page) }}" class="page-btn">
+                        {{ $page }}
+                    </a>
+                @endif
+            @endforeach
+
+            @if ($end < $last)
+                @if ($end < $last - 1)
+                    <span class="page-btn disabled">...</span>
+                @endif
+
+                <a href="{{ $data->url($last) }}" class="page-btn">
+                    {{ $last }}
+                </a>
+            @endif
+
+            @if ($data->hasMorePages())
+                <a href="{{ $data->nextPageUrl() }}" class="page-btn">
+                    Next ›
+                </a>
+            @else
+                <span class="page-btn disabled">Next ›</span>
+            @endif
+
+        </div>
+    </div>
+@endif
         </div>
     </div>
 </div>

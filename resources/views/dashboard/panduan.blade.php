@@ -2,7 +2,7 @@
 
 @section('container')
 
-<style>
+<!-- <style>
     .panduan-page {
         --primary: #2563eb;
         --primary-dark: #1e40af;
@@ -277,7 +277,7 @@
             width: 100%;
         }
     }
-</style>
+</style> -->
 
 <div class="panduan-page">
     {{-- PENGANTAR --}}
@@ -309,7 +309,7 @@
                         <p>
                             Membuat akun pengguna baru, menentukan
                             hak akses, serta mengatur akun pengguna
-                            sesuai kebutuhan operasional.
+                            sesuai kebutuhan.
                         </p>
                     </div>
                 </div>
@@ -331,7 +331,7 @@
             <div class="panduan-note">
                 <strong>Catatan:</strong>
                 Super Admin bertanggung jawab terhadap pengelolaan
-                akses pengguna dan pengawasan administrasi sistem.
+                akses pengguna dan pengawasan sistem lintas cabang.
             </div>
 
         </div>
@@ -350,32 +350,37 @@
         <div class="panduan-content">
 
             <div class="panduan-flow">
-
                 <div class="panduan-item">
                     <div class="panduan-number">01</div>
                     <div>
-                        <h5>Input Data Supplier</h5>
+                        <h5>Input Master Barang</h5>
                         <p>
-                            Mendaftarkan dan mengelola informasi supplier
-                            sebagai sumber pemasok barang.
+                            Mendaftarkan dan mengelola informasi Master Barang.
                         </p>
                     </div>
                 </div>
-
                 <div class="panduan-item">
                     <div class="panduan-number">02</div>
                     <div>
+                        <h5>Input Data Supplier</h5>
+                        <p>
+                            Mendaftarkan dan mengelola informasi supplier.
+                        </p>
+                    </div>
+                </div>
+                <div class="panduan-item">
+                    <div class="panduan-number">03</div>
+                    <div>
                         <h5>Input Penerimaan Barang</h5>
                         <p>
-                            Mencatat barang yang masuk, meliputi supplier,
-                            tanggal penerimaan, nama barang, jumlah,
-                            dan informasi pendukung lainnya.
+                            Mencatat barang yang masuk, dari acuan master barang & supplier,
+                            tanggal penerimaan, jumlah, dan informasi pendukung lainnya.
                         </p>
                     </div>
                 </div>
 
                 <div class="panduan-item">
-                    <div class="panduan-number">03</div>
+                    <div class="panduan-number">04</div>
                     <div>
                         <h5>Input Pengeluaran Barang</h5>
                         <p>
@@ -387,7 +392,7 @@
                 </div>
 
                 <div class="panduan-item">
-                    <div class="panduan-number">04</div>
+                    <div class="panduan-number">05</div>
                     <div>
                         <h5>Cetak Tanda Terima</h5>
                         <p>
@@ -399,35 +404,17 @@
                 </div>
 
                 <div class="panduan-item">
-                    <div class="panduan-number">05</div>
+                    <div class="panduan-number">06</div>
                     <div>
-                        <h5>Cetak Laporan Penerimaan</h5>
+                        <h5>Cetak Laporan</h5>
                         <p>
-                            Melihat dan mencetak laporan penerimaan
+                            Melihat dan mencetak laporan penerimaan & pengeluaran
                             berdasarkan periode tanggal serta data
                             supplier dan barang.
                         </p>
                     </div>
                 </div>
 
-                <div class="panduan-item">
-                    <div class="panduan-number">06</div>
-                    <div>
-                        <h5>Cetak Laporan Pengeluaran</h5>
-                        <p>
-                            Melihat dan mencetak laporan pengeluaran
-                            berdasarkan periode tanggal, nama barang,
-                            serta informasi pengambilan.
-                        </p>
-                    </div>
-                </div>
-
-            </div>
-
-            <div class="panduan-note">
-                <strong>Catatan:</strong>
-                Admin Gerai mengelola transaksi dan data operasional
-                sesuai dengan cakupan cabang yang menjadi tanggung jawabnya.
             </div>
 
         </div>
@@ -439,7 +426,11 @@
         <h4>Gambaran Alur Persediaan Barang</h4>
 
         <div class="panduan-process-flow">
-
+        <div class="panduan-process-step">
+                <strong>MASTER BARANG</strong>
+                <small>Informasi barang</small>
+            </div>
+            <span class="panduan-arrow">→</span>
             <div class="panduan-process-step">
                 <strong>SUPPLIER</strong>
                 <small>Sumber pemasok barang</small>

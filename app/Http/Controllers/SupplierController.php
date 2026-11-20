@@ -59,7 +59,10 @@ class SupplierController extends Controller
             });
         }
 
-        $suppliers = $query->latest()->paginate(10)->withQueryString();
+        $suppliers = $query
+        ->orderBy('nama_supplier')
+        ->paginate(10)
+        ->withQueryString();
 
         $isGlobalUser = $this->isGlobalUser();
 
@@ -79,26 +82,38 @@ class SupplierController extends Controller
     {
         abort_unless(auth()->user()->can('supplier.create'), 403);
 
+        // User cabang otomatis menggunakan cabangnya sendiri.
+        // User global wajib memilih cabang tujuan.
+        if ($this->isGlobalUser()) {
+            $branchId = $request->input('branch_id');
+        } else {
+            $branchId = auth()->user()->branch_id;
+
+            abort_unless($branchId, 403);
+        }
+
         $validated = $request->validate([
+            'branch_id' => $this->isGlobalUser()
+                ? ['required', 'exists:branches,id']
+                : ['nullable'],
+
             'kode_supplier' => [
                 'required',
                 'string',
                 'max:50',
-                'unique:suppliers,kode_supplier',
+                Rule::unique('suppliers', 'kode_supplier')
+                    ->where(function ($query) use ($branchId) {
+                        return $query->where('branch_id', $branchId);
+                    }),
             ],
+
             'nama_supplier' => ['required', 'string', 'max:255'],
             'alamat' => ['nullable', 'string'],
             'no_telepon' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
-            'branch_id' => ['nullable', 'exists:branches,id'],
         ]);
 
-        // User cabang hanya boleh membuat supplier di cabangnya
-        if (!$this->isGlobalUser()) {
-            abort_unless(auth()->user()->branch_id, 403);
-
-            $validated['branch_id'] = auth()->user()->branch_id;
-        }
+        $validated['branch_id'] = $branchId;
 
         Supplier::create($validated);
 
@@ -114,25 +129,37 @@ class SupplierController extends Controller
 
         $supplier = $this->supplierQuery()->findOrFail($id);
 
+        if ($this->isGlobalUser()) {
+            $branchId = $request->input('branch_id');
+
+            $request->validate([
+                'branch_id' => ['required', 'exists:branches,id'],
+            ]);
+        } else {
+            $branchId = auth()->user()->branch_id;
+
+            abort_unless($branchId, 403);
+        }
+
         $validated = $request->validate([
             'kode_supplier' => [
                 'required',
                 'string',
                 'max:50',
                 Rule::unique('suppliers', 'kode_supplier')
+                    ->where(function ($query) use ($branchId) {
+                        return $query->where('branch_id', $branchId);
+                    })
                     ->ignore($supplier->id),
             ],
+
             'nama_supplier' => ['required', 'string', 'max:255'],
             'alamat' => ['nullable', 'string'],
             'no_telepon' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
-            'branch_id' => ['nullable', 'exists:branches,id'],
         ]);
 
-        // Admin cabang tidak boleh memindahkan supplier ke cabang lain
-        if (!$this->isGlobalUser()) {
-            $validated['branch_id'] = auth()->user()->branch_id;
-        }
+        $validated['branch_id'] = $branchId;
 
         $supplier->update($validated);
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\PengeluaranController;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\SupplierController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\BarangController;
 
 Route::get('/', [LoginController::class, 'index'])->name('login');
 Route::post('/', [LoginController::class, 'authenticate'])->name('login');
@@ -25,20 +26,30 @@ Route::middleware(['auth'])->group(function () {
         [DashboardController::class, 'store']
     )->name('databarang.penerimaan.store');
 
+    Route::get('/databarang/penerimaan-barang/{id}/pdf',
+    [DashboardController::class, 'penerimaanPdf']
+)->name('databarang.penerimaan.pdf');
+
     // Daftar Barang
     Route::get('/databarang/kelola-barang',
         [DashboardController::class, 'kelolabarang']
     )->name('databarang.barang');
 
-    // Update berdasarkan kode barang
-    Route::put('/databarang/kelola-barang/{kode_barang}',
+    // UPDATE
+    Route::put('/databarang/kelola-barang/{id}',
         [DashboardController::class, 'update']
     )->name('databarang.barang.update');
 
-    // Delete berdasarkan kode barang
-    Route::delete('/databarang/kelola-barang/{kode_barang}',
+    // DELETE
+    Route::delete('/databarang/kelola-barang/{id}',
         [DashboardController::class, 'destroy']
     )->name('databarang.barang.destroy');
+
+    Route::resource('databarang/barangs', BarangController::class)
+    ->except(['show']);
+
+    Route::get('/barangs/search', [BarangController::class, 'search'])
+    ->name('barangs.search');
 });
 
 Route::middleware(['auth'])->group(function () {
@@ -94,4 +105,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/laporan/pengeluaran/pdf', [LaporanController::class, 'pengeluaranPdf'])
         ->name('laporan.pengeluaran.pdf');
+
+    Route::get('/laporan/penyesuaian', [LaporanController::class, 'penyesuaian'])
+        ->name('laporan.penyesuaian');
+
+    Route::get('/laporan/penyesuaian/pdf', [LaporanController::class, 'penyesuaianPdf'])
+        ->name('laporan.penyesuaian.pdf');
 });

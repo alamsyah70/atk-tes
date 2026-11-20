@@ -10,9 +10,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Models\Barang;
 
 class PengeluaranController extends Controller
 {
+    // =====================================================
+    // 1. HELPER HAK AKSES DAN CABANG
+    // =====================================================
+
     private function isGlobalUser(): bool
     {
         return Auth::user()->hasAnyRole([
@@ -25,14 +30,22 @@ class PengeluaranController extends Controller
     {
         $user = Auth::user();
 
-        abort_if(!$user->branch_id, 403, 'User belum memiliki cabang.');
+        abort_if(
+            !$user->branch_id,
+            403,
+            'User belum memiliki cabang.'
+        );
 
         return (int) $user->branch_id;
     }
 
     private function pengeluaranQuery()
     {
-        $query = Pengeluaran::with(['branch', 'user', 'details']);
+        $query = Pengeluaran::with([
+            'branch',
+            'user',
+            'details',
+        ]);
 
         if (!$this->isGlobalUser()) {
             $query->where('branch_id', $this->branchId());
@@ -41,16 +54,131 @@ class PengeluaranController extends Controller
         return $query;
     }
 
-    /**
-     * Halaman daftar pengeluaran dan pilihan barang.
-     */
+    // =====================================================
+    // 2. HITUNG STOK BARANG
+    //
+    // Stok = Penerimaan - Pengeluaran + Penyesuaian
+    //
+    // Mendukung:
+    // - barang_id baru
+    // - barang_id NULL pada data historis
+    // =====================================================
+
+    private function hitungStokBarang(
+        $barang,
+        int $branchId
+    ): float {
+
+        // ---------------------------------------------
+        // TOTAL PENERIMAAN
+        // ---------------------------------------------
+
+        $totalMasuk = DB::table('detail_penerimaans as dp')
+            ->join(
+                'penerimaans as p',
+                'dp.penerimaan_id',
+                '=',
+                'p.id'
+            )
+            ->where('p.branch_id', $branchId)
+            ->where(function ($query) use ($barang) {
+                $query->where(
+                    'dp.barang_id',
+                    $barang->id
+                )->orWhere(function ($legacy) use ($barang) {
+                    $legacy->whereNull('dp.barang_id')
+                        ->where(
+                            'dp.kode_barang',
+                            $barang->kode_barang
+                        );
+                });
+            })
+            ->sum('dp.qty');
+
+        // ---------------------------------------------
+        // TOTAL PENGELUARAN
+        // ---------------------------------------------
+
+        $totalKeluar = DB::table('detail_pengeluarans as dpo')
+            ->join(
+                'pengeluarans as po',
+                'dpo.pengeluaran_id',
+                '=',
+                'po.id'
+            )
+            ->where('po.branch_id', $branchId)
+            ->where(function ($query) use ($barang) {
+                $query->where(
+                    'dpo.barang_id',
+                    $barang->id
+                )->orWhere(function ($legacy) use ($barang) {
+                    $legacy->whereNull('dpo.barang_id')
+                        ->where(
+                            'dpo.kode_barang',
+                            $barang->kode_barang
+                        );
+                });
+            })
+            ->sum('dpo.qty');
+
+        // ---------------------------------------------
+        // TOTAL PENYESUAIAN STOK
+        //
+        // Asumsi tabel penyesuaian_stoks menggunakan:
+        // branch_id, kode_barang, qty_koreksi
+        // ---------------------------------------------
+
+        $totalPenyesuaian = DB::table('penyesuaian_stoks')
+            ->where('branch_id', $branchId)
+            ->where(
+                'kode_barang',
+                $barang->kode_barang
+            )
+            ->sum('qty_koreksi');
+
+        return (float) $totalMasuk
+            - (float) $totalKeluar
+            + (float) $totalPenyesuaian;
+    }
+
+    // =====================================================
+    // 3. HITUNG AVERAGE PEROLEHAN
+    //
+    // Prioritas:
+    // 1. barangs.average_perolehan
+    // 2. Hitung rata-rata tertimbang dari penerimaan
+    // =====================================================
+
+    private function hitungAveragePerolehan(
+        Barang $barang,
+        int $branchId
+    ): float {
+        $average = (float) $barang->average_perolehan;
+    
+        if ($average <= 0) {
+            throw new \RuntimeException(
+                "Average perolehan {$barang->kode_barang} belum valid."
+            );
+        }
+    
+        return $average;
+    }
+
+    // =====================================================
+    // 4. INDEX
+    // =====================================================
+
     public function index(Request $request)
     {
-        abort_unless(Auth::user()->can('pengeluaran.view'), 403);
+        abort_unless(
+            Auth::user()->can('pengeluaran.view'),
+            403
+        );
 
-        // =========================================
-        // 1. DATA CABANG
-        // =========================================
+        // ---------------------------------------------
+        // DATA CABANG
+        // ---------------------------------------------
+
         $branches = $this->isGlobalUser()
             ? Branch::orderBy('nama_cabang')->get()
             : collect();
@@ -60,49 +188,85 @@ class PengeluaranController extends Controller
                 'branch_id' => 'nullable|exists:branches,id',
             ]);
 
-            $branchId = $request->branch_id
+            $branchId = $request->filled('branch_id')
                 ? (int) $request->branch_id
                 : null;
         } else {
             $branchId = $this->branchId();
         }
 
-        // =========================================
-        // 2. RIWAYAT PENGELUARAN
-        // =========================================
+        // ---------------------------------------------
+        // RIWAYAT PENGELUARAN
+        // ---------------------------------------------
+
         $search = $request->input('search');
 
         $queryPengeluaran = $this->pengeluaranQuery()
             ->withCount('details');
 
-        $queryPengeluaran->when($search, function ($query) use ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('nomor_pengeluaran', 'like', "%{$search}%")
-                    ->orWhere('tanggal', 'like', "%{$search}%")
-                    ->orWhere('divisi', 'like', "%{$search}%")
-                    ->orWhere('nama_pengambil', 'like', "%{$search}%")
+        $queryPengeluaran->when(
+            $search,
+            function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where(
+                        'nomor_pengeluaran',
+                        'like',
+                        "%{$search}%"
+                    )
+                    ->orWhere(
+                        'tanggal',
+                        'like',
+                        "%{$search}%"
+                    )
+                    ->orWhere(
+                        'divisi',
+                        'like',
+                        "%{$search}%"
+                    )
+                    ->orWhere(
+                        'nama_pengambil',
+                        'like',
+                        "%{$search}%"
+                    )
+                    ->orWhereHas(
+                        'branch',
+                        function ($branch) use ($search) {
+                            $branch->where(
+                                'nama_cabang',
+                                'like',
+                                "%{$search}%"
+                            );
+                        }
+                    )
+                    ->orWhereHas(
+                        'details',
+                        function ($detail) use ($search) {
+                            $detail->where(
+                                'kode_barang',
+                                'like',
+                                "%{$search}%"
+                            )
+                            ->orWhere(
+                                'nama_barang',
+                                'like',
+                                "%{$search}%"
+                            )
+                            ->orWhere(
+                                'kategori',
+                                'like',
+                                "%{$search}%"
+                            );
+                        }
+                    );
+                });
+            }
+        );
 
-                    // Cari berdasarkan cabang
-                    ->orWhereHas('branch', function ($branch) use ($search) {
-                        $branch->where(
-                            'nama_cabang',
-                            'like',
-                            "%{$search}%"
-                        );
-                    })
-
-                    // Cari berdasarkan detail barang
-                    ->orWhereHas('details', function ($detail) use ($search) {
-                        $detail->where('kode_barang', 'like', "%{$search}%")
-                            ->orWhere('nama_barang', 'like', "%{$search}%")
-                            ->orWhere('kategori', 'like', "%{$search}%");
-                    });
-            });
-        });
-
-        // Filter cabang untuk Super Admin / Admin Pusat
         if ($this->isGlobalUser() && $branchId) {
-            $queryPengeluaran->where('branch_id', $branchId);
+            $queryPengeluaran->where(
+                'branch_id',
+                $branchId
+            );
         }
 
         $pengeluarans = $queryPengeluaran
@@ -111,55 +275,48 @@ class PengeluaranController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        // =========================================
-        // 3. DATA BARANG BERDASARKAN CABANG
-        // =========================================
+        // ---------------------------------------------
+        // MASTER BARANG DAN STOK
+        // ---------------------------------------------
+
         $barang = collect();
 
         if ($branchId) {
-            $barang = DB::table('detail_penerimaans as dp')
-                ->join('penerimaans as p', 'dp.penerimaan_id', '=', 'p.id')
-                ->where('p.branch_id', $branchId)
-                ->select(
-                    'dp.kode_barang',
-                    DB::raw('MAX(dp.nama_barang) as nama_barang'),
-                    DB::raw('MAX(dp.kategori) as kategori'),
-                    DB::raw('MAX(dp.satuan) as satuan'),
-                    DB::raw('MAX(dp.lokasi) as lokasi'),
-                    DB::raw('SUM(dp.qty) as total_masuk')
-                )
-                ->groupBy('dp.kode_barang')
-                ->get()
-                ->map(function ($item) use ($branchId) {
-                    $totalKeluar = DB::table('detail_pengeluarans as dp')
-                        ->join('pengeluarans as p', 'dp.pengeluaran_id', '=', 'p.id')
-                        ->where('p.branch_id', $branchId)
-                        ->where('dp.kode_barang', $item->kode_barang)
-                        ->sum('dp.qty');
+            $masterBarang = DB::table('barangs')
+                ->where('branch_id', $branchId)
+                ->orderBy('kode_barang')
+                ->get();
 
-                    $item->stok = (int) $item->total_masuk - (int) $totalKeluar;
+            $barang = $masterBarang
+                ->map(function ($item) use ($branchId) {
+                    $item->stok = $this->hitungStokBarang(
+                        $item,
+                        $branchId
+                    );
 
                     return $item;
                 })
-                ->filter(fn ($item) => $item->stok > 0)
+                ->filter(function ($item) {
+                    return $item->stok > 0;
+                })
                 ->values();
         }
 
-        // =========================================
-        // 4. DATA AUTOCOMPLETE BARANG
-        // =========================================
+        // ---------------------------------------------
+        // DATA AUTOCOMPLETE
+        // ---------------------------------------------
+
         $dataBarang = $barang->map(function ($item) {
             return [
-                'kode' => $item->kode_barang,
-                'nama' => $item->nama_barang,
-                'stok' => (int) $item->stok,
-                'satuan' => $item->satuan,
+                'id'           => $item->id,
+                'kode'         => $item->kode_barang,
+                'nama'         => $item->nama_barang,
+                'stok'         => $item->stok,
+                'satuan'       => $item->satuan,
+                'harga_pokok'  => (float) ($item->average_perolehan ?? 0),
             ];
-        })->values();
+        });
 
-        // =========================================
-        // 5. TAMPILKAN VIEW
-        // =========================================
         return view('pengeluaran.index', compact(
             'pengeluarans',
             'branches',
@@ -170,15 +327,20 @@ class PengeluaranController extends Controller
         ));
     }
 
-    /**
-     * Simpan transaksi pengeluaran dan kurangi stok tersedia.
-     */
+    // =====================================================
+    // 5. STORE
+    // =====================================================
+
     public function store(Request $request)
     {
         abort_unless(
             Auth::user()->can('pengeluaran.create'),
             403
         );
+
+        // ---------------------------------------------
+        // VALIDASI INPUT
+        // ---------------------------------------------
 
         $validated = $request->validate([
             'branch_id' => $this->isGlobalUser()
@@ -191,117 +353,243 @@ class PengeluaranController extends Controller
             'keterangan' => 'nullable|string',
 
             'kode_barang' => 'required|array|min:1',
-            'kode_barang.*' => 'required|string',
+            'kode_barang.*' => 'required|string|max:50',
+
             'qty' => 'required|array|min:1',
             'qty.*' => 'required|integer|min:1',
         ]);
+
+        // ---------------------------------------------
+        // TENTUKAN CABANG
+        // ---------------------------------------------
 
         $branchId = $this->isGlobalUser()
             ? (int) $validated['branch_id']
             : $this->branchId();
 
-        // Pastikan jumlah kode barang dan qty sama.
-        if (count($validated['kode_barang']) !== count($validated['qty'])) {
+        $kodeBarang = array_values(
+            $validated['kode_barang']
+        );
+
+        $qtyBarang = array_values(
+            $validated['qty']
+        );
+
+        if (count($kodeBarang) !== count($qtyBarang)) {
             return back()
                 ->withInput()
-                ->withErrors(['kode_barang' => 'Data barang tidak sesuai.']);
+                ->withErrors([
+                    'kode_barang' => 'Data barang dan qty tidak sesuai.',
+                ]);
         }
 
         try {
+
             $pengeluaran = DB::transaction(function () use (
                 $validated,
-                $branchId
+                $branchId,
+                $kodeBarang,
+                $qtyBarang
             ) {
-                $nomor = 'PG-'.now()->format('Ymd')
-                    .'-'.strtoupper(Str::random(4));
+
+                // -------------------------------------
+                // KUNCI CABANG
+                // -------------------------------------
+
+                $branch = DB::table('branches')
+                    ->where('id', $branchId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$branch) {
+                    throw new \RuntimeException(
+                        'Cabang tidak ditemukan.'
+                    );
+                }
+
+                // -------------------------------------
+                // GENERATE NOMOR PENGELUARAN
+                // KLR-MMYY-000001
+                // -------------------------------------
+
+                $urutanTerakhir = DB::table('pengeluarans')
+                    ->where('branch_id', $branchId)
+                    ->whereRaw(
+                        "nomor_pengeluaran REGEXP ?",
+                        ['^KLR-[0-9]{4}-[0-9]+$']
+                    )
+                    ->selectRaw("
+                        COALESCE(
+                            MAX(
+                                CAST(
+                                    SUBSTRING_INDEX(
+                                        nomor_pengeluaran,
+                                        '-',
+                                        -1
+                                    ) AS UNSIGNED
+                                )
+                            ),
+                            0
+                        ) AS urutan
+                    ")
+                    ->value('urutan');
+
+                $urutanBaru = ((int) $urutanTerakhir) + 1;
+
+                $nomorPengeluaran = 'KLR-' .
+                    \Carbon\Carbon::parse(
+                        $validated['tanggal']
+                    )->format('my') .
+                    '-' .
+                    str_pad(
+                        $urutanBaru,
+                        6,
+                        '0',
+                        STR_PAD_LEFT
+                    );
+
+                // -------------------------------------
+                // SIMPAN HEADER
+                // -------------------------------------
 
                 $pengeluaran = Pengeluaran::create([
                     'branch_id' => $branchId,
                     'user_id' => Auth::id(),
-                    'nomor_pengeluaran' => $nomor,
+                    'nomor_pengeluaran' => $nomorPengeluaran,
                     'divisi' => $validated['divisi'],
                     'nama_pengambil' => $validated['nama_pengambil'],
                     'tanggal' => $validated['tanggal'],
                     'keterangan' => $validated['keterangan'] ?? null,
                 ]);
 
-                // Gabungkan jika kode barang yang sama dikirim lebih dari sekali.
+                // -------------------------------------
+                // GABUNGKAN BARANG DENGAN KODE SAMA
+                // -------------------------------------
+
                 $items = [];
 
-                foreach ($validated['kode_barang'] as $index => $kode) {
+                foreach ($kodeBarang as $index => $kode) {
+                    $kode = trim($kode);
+
+                    if ($kode === '') {
+                        throw new \RuntimeException(
+                            'Kode barang tidak boleh kosong.'
+                        );
+                    }
+
                     $items[$kode] = ($items[$kode] ?? 0)
-                        + (int) $validated['qty'][$index];
+                        + (int) $qtyBarang[$index];
                 }
 
+                // -------------------------------------
+                // PROSES SETIAP BARANG
+                // -------------------------------------
+
                 foreach ($items as $kode => $qtyKeluar) {
-                    // Kunci baris penerimaan untuk mengurangi risiko
-                    // dua transaksi mengeluarkan stok yang sama bersamaan.
-                    $penerimaanItems = DB::table('detail_penerimaans as dp')
-                        ->join(
-                            'penerimaans as p',
-                            'dp.penerimaan_id',
-                            '=',
-                            'p.id'
-                        )
-                        ->where('p.branch_id', $branchId)
-                        ->where('dp.kode_barang', $kode)
-                        ->select('dp.*')
+
+                    // Cari master barang berdasarkan cabang
+                    $masterBarang = Barang::query()
+                        ->where('branch_id', $branchId)
+                        ->where('kode_barang', $kode)
                         ->lockForUpdate()
                         ->get();
 
-                    if ($penerimaanItems->isEmpty()) {
-                        throw new \RuntimeException("Barang dengan kode {$kode} tidak ditemukan di cabang ini.");
+                    if ($masterBarang->isEmpty()) {
+                        throw new \RuntimeException(
+                            "Barang {$kode} tidak ditemukan di master barang cabang ini."
+                        );
                     }
 
-                    $totalMasuk = (int) $penerimaanItems->sum('qty');
+                    if ($masterBarang->count() > 1) {
+                        throw new \RuntimeException(
+                            "Kode {$kode} terdaftar lebih dari satu kali pada master barang cabang ini. Periksa master barang."
+                        );
+                    }
 
-                    $totalKeluar = (int) DB::table('detail_pengeluarans as dpo')
-                        ->join(
-                            'pengeluarans as po',
-                            'dpo.pengeluaran_id',
-                            '=',
-                            'po.id'
-                        )
-                        ->where('po.branch_id', $branchId)
-                        ->where('dpo.kode_barang', $kode)
-                        ->sum('dpo.qty');
+                    $dataBarang = $masterBarang->first();
 
-                    $stokTersedia = $totalMasuk - $totalKeluar;
+                    // ---------------------------------
+                    // HITUNG STOK AKTUAL
+                    // ---------------------------------
+
+                    $stokTersedia = $this->hitungStokBarang(
+                        $dataBarang,
+                        $branchId
+                    );
+
+                    if ($stokTersedia < 0) {
+                        throw new \RuntimeException(
+                            "Stok {$kode} negatif ({$stokTersedia}). Periksa transaksi dan penyesuaian stok."
+                        );
+                    }
 
                     if ($qtyKeluar > $stokTersedia) {
-                        throw new \RuntimeException("Stok {$kode} tidak mencukupi. Stok tersedia: {$stokTersedia}.");
+                        throw new \RuntimeException(
+                            "Stok {$kode} tidak mencukupi. Stok tersedia: {$stokTersedia}."
+                        );
                     }
 
-                    $dataBarang = $penerimaanItems->first();
+                    // ---------------------------------
+                    // HITUNG AVERAGE PEROLEHAN
+                    // ---------------------------------
+
+                    $hargaPokok = $this->hitungAveragePerolehan(
+                        $dataBarang,
+                        $branchId
+                    );
+
+                    $jumlahHargaPokok = round(
+                        $qtyKeluar * $hargaPokok,
+                        2
+                    );
+
+                    // ---------------------------------
+                    // SIMPAN DETAIL PENGELUARAN
+                    // ---------------------------------
 
                     DetailPengeluaran::create([
                         'pengeluaran_id' => $pengeluaran->id,
+
+                        'barang_id' => $dataBarang->id,
                         'kode_barang' => $dataBarang->kode_barang,
                         'nama_barang' => $dataBarang->nama_barang,
                         'kategori' => $dataBarang->kategori,
                         'satuan' => $dataBarang->satuan,
                         'lokasi' => $dataBarang->lokasi,
+
                         'qty' => $qtyKeluar,
+
+                        'harga_pokok' => $hargaPokok,
+                        'jumlah_harga_pokok' => $jumlahHargaPokok,
                     ]);
                 }
 
                 return $pengeluaran;
-            });
+
+            }, 3);
 
             return redirect()
                 ->route('pengeluaran.index')
-                ->with('success', 'Pengeluaran barang berhasil disimpan.')
+                ->with(
+                    'success',
+                    'Pengeluaran barang berhasil disimpan.'
+                )
                 ->with('pengeluaran_id', $pengeluaran->id);
+
         } catch (\Throwable $e) {
+
             return back()
                 ->withInput()
-                ->withErrors(['pengeluaran' => $e->getMessage()]);
+                ->withErrors([
+                    'pengeluaran' => $e->getMessage(),
+                ]);
         }
     }
 
-    /**
-     * Cetak bukti pengeluaran PDF.
-     */
+    // =====================================================
+    // 6. PDF
+    // =====================================================
+
     public function pdf($id)
     {
         abort_unless(
@@ -318,7 +606,7 @@ class PengeluaranController extends Controller
         )->setPaper('a4', 'portrait');
 
         return $pdf->stream(
-            $pengeluaran->nomor_pengeluaran.'.pdf'
+            $pengeluaran->nomor_pengeluaran . '.pdf'
         );
     }
 }

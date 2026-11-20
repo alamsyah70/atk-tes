@@ -33,4 +33,12 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Branch::class);
     }
+
+    public function isGlobalUser(): bool
+    {
+        return $this->hasAnyRole([
+            'Super Admin',
+            'Admin Pusat',
+        ]);
+    }
 }
