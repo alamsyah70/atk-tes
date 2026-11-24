@@ -50,6 +50,9 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/barangs/search', [BarangController::class, 'search'])
     ->name('barangs.search');
+
+    Route::get('/cek-kode-barang', [BarangController::class, 'cekKodeBarang'])
+    ->name('barangs.cek-kode');
 });
 
 Route::middleware(['auth'])->group(function () {
@@ -111,4 +114,18 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/laporan/penyesuaian/pdf', [LaporanController::class, 'penyesuaianPdf'])
         ->name('laporan.penyesuaian.pdf');
+    
+        // LAPORAN REKAPITULASI PENERIMAAN DAN PEMAKAIAN
+    Route::get('/laporan', [LaporanController::class, 'laporan'])
+        ->name('laporan.index');
+
+    Route::get('/laporan/penerimaan-per-supplier/pdf', [LaporanController::class, 'penerimaanSupplierPdf']
+    )->name('laporan.penerimaan.supplier.pdf');
+
+    Route::get('/laporan/pemakaian-per-divisi/pdf', [LaporanController::class, 'pemakaianDivisiPdf']
+    )->name('laporan.pemakaian.divisi.pdf');
+
+    Route::get('/laporan/pemakaian-tahunan/pdf', [LaporanController::class, 'pemakaianTahunanPdf']
+    )->name('laporan.pemakaian.tahunan.pdf');
+
 });

@@ -6,7 +6,9 @@
   <title>ATK Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
     rel="stylesheet">
-<style>
+
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ filemtime(public_path('css/app.css')) }}">
+<!-- <style>
     /* HALAMAN PENERIMAAN BARANG */
 
     .receipt-page {
@@ -1596,7 +1598,8 @@
       .section-head .btn { white-space: nowrap; }
       .table-panel .panel-head { flex-wrap: wrap; gap: 12px; }
     }
-</style>
+    
+</style> -->
 
 </head>
 <body>
@@ -1686,19 +1689,24 @@
     </button>
 
     <div class="submenu">
+    <a href="{{ route('laporan.index') }}"
+           class="{{ request()->routeIs('laporan.index*') ? 'active' : '' }}">
+            Laporan Bulanan & Tahunan
+        </a>
+        
         <a href="{{ route('laporan.penerimaan') }}"
            class="{{ request()->routeIs('laporan.penerimaan*') ? 'active' : '' }}">
-            Laporan Penerimaan Barang
+            Laporan Histori Penerimaan Barang
         </a>
 
         <a href="{{ route('laporan.pengeluaran') }}"
            class="{{ request()->routeIs('laporan.pengeluaran*') ? 'active' : '' }}">
-            Laporan Pengeluaran Barang
+            Laporan Histori Pengeluaran Barang
         </a>
 
         <a href="{{ route('laporan.penyesuaian') }}"
            class="{{ request()->routeIs('laporan.penyesuaian*') ? 'active' : '' }}">
-            Laporan Penyesuaian Stok
+            Laporan Histori Penyesuaian Stok
         </a>
     </div>
 </div>

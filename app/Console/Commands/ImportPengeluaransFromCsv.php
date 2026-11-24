@@ -11,7 +11,7 @@ use Throwable;
 class ImportPengeluaransFromCsv extends Command
 {
     protected $signature = 'atk:import-pengeluarans
-        {file=D:\IT\App\Data\pengeluarans.csv}
+        {file=D:\IT\App\migrasi\pengeluarans.csv}
         {--branch=}
         {--user=}
         {--dry-run}';

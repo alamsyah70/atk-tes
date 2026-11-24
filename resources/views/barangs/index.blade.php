@@ -8,6 +8,23 @@
     white-space: nowrap;
     }
 
+    thead th form {
+        margin: 0;
+        min-width: 110px;
+    }
+
+    thead th select.form-select {
+        min-width: 110px;
+        font-size: 12px;
+        cursor: pointer;
+        border-radius: 6px;
+    }
+    
+    thead th {
+    vertical-align: middle;
+    white-space: nowrap;
+    }
+
     thead th select.form-select {
         min-width: 150px;
         font-size: 12px;
@@ -291,10 +308,11 @@
     </div>
 
     {{-- TABEL BARANG --}}
+    
     <div class="table-responsive">
 
         <table class="table table-bordered table-striped align-middle">
-
+            
             <thead>
                 <tr>
                     <th>KODE BARANG</th>
@@ -304,41 +322,57 @@
                     <th>LOKASI</th>
                     <th>Stok Akhir</th>
                     <th>Harga Rata-rata</th>
-                    <th>Nilai Saldo</th>
-
-                    @if($isGlobalUser)
-            <th>
-                <div style="min-width: 170px;">
-                    <form action="{{ request()->url() }}" method="GET">
-                        {{-- Pertahankan pencarian --}}
-                        @if(request('q'))
-                            <input type="hidden" name="q" value="{{ request('q') }}">
-                        @endif
-
-                        {{-- Pertahankan filter lainnya jika ada --}}
-                        @if(request('q_status'))
-                            <input type="hidden" name="q_status" value="{{ request('q_status') }}">
-                        @endif
-
-                        <select name="branch_id"
-                            class="form-select form-select-sm"
-                            onchange="this.form.submit()">
-
-                            <option value="">Cabang</option>
-
-                            @foreach($branches as $branch)
-                                <option value="{{ $branch->id }}"
-                                    @selected(request('branch_id') == $branch->id)>
-                                    {{ $branch->kode_cabang }} -
-                                    {{ $branch->nama_cabang }}
+                    <th>
+                        <form method="GET" action="{{ route('barangs.index') }}">
+                            <input type="hidden" name="search" value="{{ request('search') }}">
+                            <select name="saldo"
+                                    class="form-select form-select-sm"
+                                    onchange="this.form.submit()">
+                                <option value="">Semua Saldo</option>
+                                <option value="minus" {{ request('saldo') == 'minus' ? 'selected' : '' }}>
+                                    Saldo Minus
                                 </option>
-                            @endforeach
-                        </select>
-                    </form>
-                </div>
-            </th>
-        @endif
+                                <option value="nol" {{ request('saldo') == 'nol' ? 'selected' : '' }}>
+                                    Saldo Nol
+                                </option>
+                                <option value="positif" {{ request('saldo') == 'positif' ? 'selected' : '' }}>
+                                    Saldo Positif
+                                </option>
+                            </select>
+                        </form>
+                    </th>
+                    @if($isGlobalUser)
+                    <th>
+                        <div style="min-width: 170px;">
+                            <form action="{{ request()->url() }}" method="GET">
+                                {{-- Pertahankan pencarian --}}
+                                @if(request('q'))
+                                    <input type="hidden" name="q" value="{{ request('q') }}">
+                                @endif
 
+                                {{-- Pertahankan filter lainnya jika ada --}}
+                                @if(request('q_status'))
+                                    <input type="hidden" name="q_status" value="{{ request('q_status') }}">
+                                @endif
+
+                                <select name="branch_id"
+                                    class="form-select form-select-sm"
+                                    onchange="this.form.submit()">
+
+                                    <option value="">Cabang</option>
+
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}"
+                                            @selected(request('branch_id') == $branch->id)>
+                                            {{ $branch->kode_cabang }} -
+                                            {{ $branch->nama_cabang }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </form>
+                        </div>
+                    </th>
+                    @endif
                     <th width="150">AKSI</th>
                 </tr>
             </thead>
@@ -394,8 +428,20 @@
                             @endcan
                         </td>
                     </tr>
+                @empty
 
-                    {{-- MODAL EDIT --}}
+                    <tr>
+                        <td colspan="{{ $isGlobalUser ? 10 : 9 }}"
+                            class="text-center">
+                            Belum ada Master Barang.
+                        </td>
+                    </tr>
+
+                @endforelse
+            </tbody>
+        </table>
+        @foreach($barangs as $barang)
+                            {{-- MODAL EDIT --}}
                     @can('barang.update')
                     <div class="modal fade"
                         id="editModal{{ $barang->id }}"
@@ -605,30 +651,16 @@
                         </div>
                     </div>
                     @endcan
-
-                @empty
-
-                    <tr>
-                        <td colspan="{{ $isGlobalUser ? 7 : 6 }}"
-                            class="text-center">
-                            Belum ada Master Barang.
-                        </td>
-                    </tr>
-
-                @endforelse
-
-            </tbody>
-
-        </table>
+        @endforeach
 
         
-@if ($barangs->hasPages())
-    @php
-        $current = $barangs->currentPage();
-        $last = $barangs->lastPage();
-        $start = max(1, $current - 1);
-        $end = min($last, $current + 1);
-    @endphp
+    @if ($barangs->hasPages())
+        @php
+            $current = $barangs->currentPage();
+            $last = $barangs->lastPage();
+            $start = max(1, $current - 1);
+            $end = min($last, $current + 1);
+        @endphp
 
     <div class="pagination-container">
 

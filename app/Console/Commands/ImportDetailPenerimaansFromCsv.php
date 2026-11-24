@@ -10,22 +10,27 @@ use Illuminate\Support\Facades\Schema;
 class ImportDetailPenerimaansFromCsv extends Command
 {
     protected $signature = 'atk:import-detail-penerimaans
-        {file=D:\IT\App\Data\detail_penerimaans.csv}
+        {file=D:\IT\App\migrasi\detail_penerimaans.csv}
         {--branch= : ID cabang tujuan}
-        {--receipts=D:\IT\App\Data\penerimaans.csv : CSV penerimaan lama}
         {--dry-run : Simulasi tanpa menyimpan data}';
 
-    protected $description = 'Import detail penerimaan DBF dengan pemetaan ID lama ke Laravel';
+    protected $description = 'Import detail penerimaan dengan pemetaan barang_id dan penerimaan_id berdasarkan kode dan nomor';
 
     public function handle()
     {
-        $file = $this->argument('file');
-        $receiptFile = $this->option('receipts');
+        $path = $this->argument('file');
+
+        // Mendukung path absolut Windows dan path relatif
+        $file = preg_match('/^[A-Za-z]:[\/\\\\]/', $path)
+            ? $path
+            : base_path($path);
+
         $branchId = (int) $this->option('branch');
         $dryRun = (bool) $this->option('dry-run');
 
-        $this->info('Memulai import detail penerimaan DBF...');
-        $this->line("Cabang tujuan: {$branchId}");
+        $this->info('IMPORT DETAIL PENERIMAAN');
+        $this->line("File   : {$file}");
+        $this->line("Cabang : {$branchId}");
 
         if ($branchId <= 0) {
             $this->error('Parameter --branch wajib diisi.');
@@ -33,30 +38,31 @@ class ImportDetailPenerimaansFromCsv extends Command
         }
 
         if (!is_file($file)) {
-            $this->error("File detail tidak ditemukan: {$file}");
+            $this->error("File tidak ditemukan: {$file}");
             return self::FAILURE;
         }
 
-        if (!is_file($receiptFile)) {
-            $this->error("File penerimaan lama tidak ditemukan: {$receiptFile}");
+        if (!Schema::hasTable('branches')) {
+            $this->error('Tabel branches tidak ditemukan.');
+            return self::FAILURE;
+        }
+
+        if (!DB::table('branches')->where('id', $branchId)->exists()) {
+            $this->error("Cabang ID {$branchId} tidak ditemukan.");
             return self::FAILURE;
         }
 
         foreach ([
-            'branches',
-            'barangs',
-            'penerimaans',
-            'detail_penerimaans',
-        ] as $table) {
-            if (!Schema::hasTable($table)) {
-                $this->error("Tabel {$table} tidak ditemukan.");
-                return self::FAILURE;
-            }
-        }
-
-        foreach ([
-            'barangs' => ['branch_id', 'kode_barang'],
-            'penerimaans' => ['branch_id', 'nomor_penerimaan'],
+            'barangs' => [
+                'id',
+                'branch_id',
+                'kode_barang',
+            ],
+            'penerimaans' => [
+                'id',
+                'branch_id',
+                'nomor_penerimaan',
+            ],
             'detail_penerimaans' => [
                 'penerimaan_id',
                 'barang_id',
@@ -68,10 +74,13 @@ class ImportDetailPenerimaansFromCsv extends Command
                 'qty',
                 'harga',
                 'jumlah',
-                'created_at',
-                'updated_at',
             ],
         ] as $table => $columns) {
+            if (!Schema::hasTable($table)) {
+                $this->error("Tabel {$table} tidak ditemukan.");
+                return self::FAILURE;
+            }
+
             foreach ($columns as $column) {
                 if (!Schema::hasColumn($table, $column)) {
                     $this->error("Kolom {$table}.{$column} tidak ditemukan.");
@@ -79,29 +88,6 @@ class ImportDetailPenerimaansFromCsv extends Command
                 }
             }
         }
-
-        if (!DB::table('branches')->where('id', $branchId)->exists()) {
-            $this->error("Cabang {$branchId} tidak ditemukan.");
-            return self::FAILURE;
-        }
-
-        // ==========================================
-        // 1. BACA PEMETAAN PENERIMAAN LAMA
-        // ==========================================
-
-        $this->info('Membaca pemetaan penerimaan lama...');
-
-        $receiptMap = $this->loadReceiptMap($receiptFile);
-
-        if ($receiptMap === null) {
-            return self::FAILURE;
-        }
-
-        $this->info('Pemetaan penerimaan lama: ' . count($receiptMap));
-
-        // ==========================================
-        // 2. BUKA CSV DETAIL
-        // ==========================================
 
         $csv = $this->openCsv($file);
 
@@ -111,14 +97,12 @@ class ImportDetailPenerimaansFromCsv extends Command
 
         [$handle, $delimiter, $columns] = $csv;
 
-        $this->line('Header detail: ' . implode(' | ', array_keys($columns)));
-
-        // ==========================================
-        // 3. VALIDASI HEADER
-        // ==========================================
+        $this->line(
+            'Header terbaca: ' . implode(', ', array_keys($columns))
+        );
 
         $required = [
-            'penerimaan_lama',
+            'nomor_penerimaan',
             'kode_barang',
             'nama_barang',
             'qty',
@@ -143,18 +127,16 @@ class ImportDetailPenerimaansFromCsv extends Command
             return self::FAILURE;
         }
 
-        // ==========================================
-        // 4. CACHE DAN COUNTER
-        // ==========================================
-
+        // Counter
         $total = 0;
         $ready = 0;
+        $inserted = 0;
         $duplicates = 0;
         $receiptNotFound = 0;
         $barangNotFound = 0;
         $invalid = 0;
-        $inserted = 0;
 
+        // Cache agar tidak query berulang untuk kode/nomor yang sama
         $receiptCache = [];
         $barangCache = [];
 
@@ -168,11 +150,13 @@ class ImportDetailPenerimaansFromCsv extends Command
             return trim((string) ($row[$columns[$field]] ?? ''));
         };
 
-        try {
-            // ==========================================
-            // 5. PROSES SATU PER SATU
-            // ==========================================
+        if ($dryRun) {
+            $this->warn('MODE DRY RUN: data hanya disimulasikan.');
+        }
 
+        DB::beginTransaction();
+
+        try {
             while (($row = fgetcsv(
                 $handle,
                 0,
@@ -181,6 +165,7 @@ class ImportDetailPenerimaansFromCsv extends Command
                 '\\'
             )) !== false) {
 
+                // Lewati baris kosong
                 if (
                     count($row) === 1 &&
                     trim((string) $row[0]) === ''
@@ -190,21 +175,33 @@ class ImportDetailPenerimaansFromCsv extends Command
 
                 $total++;
 
-                $oldReceiptId = $get($row, 'penerimaan_lama');
+                // =====================================
+                // 1. AMBIL DATA CSV
+                // =====================================
+
+                $nomorPenerimaan = $get($row, 'nomor_penerimaan');
                 $kodeBarang = $get($row, 'kode_barang');
                 $namaBarang = $get($row, 'nama_barang');
 
+                $kategori = $get($row, 'kategori');
+                $satuan = $get($row, 'satuan');
+                $lokasi = $get($row, 'lokasi');
+
                 $qty = $this->parseNumber($get($row, 'qty'));
                 $harga = $this->parseNumber($get($row, 'harga'));
+
                 $jumlahRaw = $get($row, 'jumlah');
+
                 $jumlah = $jumlahRaw === ''
                     ? null
                     : $this->parseNumber($jumlahRaw);
 
+                // =====================================
+                // 2. VALIDASI DATA
+                // =====================================
+
                 if (
-                    $oldReceiptId === '' ||
-                    !ctype_digit($oldReceiptId) ||
-                    (int) $oldReceiptId <= 0 ||
+                    $nomorPenerimaan === '' ||
                     $kodeBarang === '' ||
                     $namaBarang === '' ||
                     $qty === null ||
@@ -214,68 +211,87 @@ class ImportDetailPenerimaansFromCsv extends Command
                     ($jumlahRaw !== '' && $jumlah === null)
                 ) {
                     $invalid++;
+
+                    if ($invalid <= 10) {
+                        $this->warn(
+                            "Baris {$total}: data tidak valid."
+                        );
+                    }
+
                     continue;
                 }
 
-                // ==========================================
-                // 6. ID PENERIMAAN LAMA -> NOMOR LAMA
-                // ==========================================
-
-                if (!isset($receiptMap[$oldReceiptId])) {
-                    $receiptNotFound++;
-                    continue;
+                // Jika jumlah kosong, hitung qty x harga
+                if ($jumlah === null) {
+                    $jumlah = $qty * $harga;
                 }
 
-                $nomorPenerimaan = $receiptMap[$oldReceiptId];
+                // =====================================
+                // 3. NOMOR PENERIMAAN DBF
+                //    -> penerimaan_id DATABASE
+                // =====================================
 
-                // ==========================================
-                // 7. NOMOR LAMA -> ID PENERIMAAN LARAVEL
-                // ==========================================
+                $receiptKey = strtoupper(trim($nomorPenerimaan));
 
-                if (!array_key_exists($nomorPenerimaan, $receiptCache)) {
-                    $receiptCache[$nomorPenerimaan] =
-                        DB::table('penerimaans')
-                            ->where('branch_id', $branchId)
-                            ->where('nomor_penerimaan', $nomorPenerimaan)
-                            ->value('id');
+                if (!array_key_exists($receiptKey, $receiptCache)) {
+                    $receiptCache[$receiptKey] = DB::table('penerimaans')
+                        ->where('branch_id', $branchId)
+                        ->whereRaw(
+                            'UPPER(TRIM(nomor_penerimaan)) = ?',
+                            [$receiptKey]
+                        )
+                        ->value('id');
                 }
 
-                $penerimaanId = $receiptCache[$nomorPenerimaan];
+                $penerimaanId = $receiptCache[$receiptKey];
 
                 if (!$penerimaanId) {
                     $receiptNotFound++;
+
+                    if ($receiptNotFound <= 10) {
+                        $this->warn(
+                            "Baris {$total}: nomor penerimaan '{$nomorPenerimaan}' tidak ditemukan di cabang {$branchId}."
+                        );
+                    }
+
                     continue;
                 }
 
-                // ==========================================
-                // 8. CARI BARANG LARAVEL BERDASARKAN KODE
-                // ==========================================
+                // =====================================
+                // 4. KODE BARANG DBF
+                //    -> barang_id DATABASE
+                // =====================================
 
-                // BARANG_ID lama sengaja tidak digunakan.
-                // Kode barang menjadi kunci pencocokan.
+                $barangKey = strtoupper(trim($kodeBarang));
 
-                if (!array_key_exists($kodeBarang, $barangCache)) {
-                    $barangCache[$kodeBarang] =
-                        DB::table('barangs')
-                            ->where('branch_id', $branchId)
-                            ->where('kode_barang', $kodeBarang)
-                            ->first();
+                if (!array_key_exists($barangKey, $barangCache)) {
+                    $barangCache[$barangKey] = DB::table('barangs')
+                        ->where('branch_id', $branchId)
+                        ->whereRaw(
+                            'UPPER(TRIM(kode_barang)) = ?',
+                            [$barangKey]
+                        )
+                        ->first();
                 }
 
-                $barang = $barangCache[$kodeBarang];
+                $barang = $barangCache[$barangKey];
 
                 if (!$barang) {
                     $barangNotFound++;
+
+                    if ($barangNotFound <= 10) {
+                        $this->warn(
+                            "Baris {$total}: kode barang '{$kodeBarang}' tidak ditemukan di cabang {$branchId}."
+                        );
+                    }
+
                     continue;
                 }
 
-                // ==========================================
-                // 9. DATA MASTER BARANG
-                // ==========================================
-
-                $kategori = $get($row, 'kategori');
-                $satuan = $get($row, 'satuan');
-                $lokasi = $get($row, 'lokasi');
+                // =====================================
+                // 5. AMBIL DATA MASTER BARANG
+                //    JIKA DATA DBF KOSONG
+                // =====================================
 
                 if ($kategori === '') {
                     $kategori = $barang->kategori ?? '';
@@ -289,10 +305,9 @@ class ImportDetailPenerimaansFromCsv extends Command
                     $lokasi = $barang->lokasi ?? '';
                 }
 
-                // Nilai 0.00 tetap dipertahankan.
-                if ($jumlah === null) {
-                    $jumlah = $qty * $harga;
-                }
+                // =====================================
+                // 6. TANGGAL CREATED / UPDATED
+                // =====================================
 
                 $createdAt = $this->parseDate(
                     $get($row, 'created_at'),
@@ -303,6 +318,10 @@ class ImportDetailPenerimaansFromCsv extends Command
                     $get($row, 'updated_at'),
                     $now
                 );
+
+                // =====================================
+                // 7. SUSUN DATA DETAIL
+                // =====================================
 
                 $data = [
                     'penerimaan_id' => $penerimaanId,
@@ -315,13 +334,19 @@ class ImportDetailPenerimaansFromCsv extends Command
                     'qty' => $qty,
                     'harga' => $harga,
                     'jumlah' => $jumlah,
-                    'created_at' => $createdAt,
-                    'updated_at' => $updatedAt,
                 ];
 
-                // ==========================================
-                // 10. CEK DUPLIKAT
-                // ==========================================
+                if (Schema::hasColumn('detail_penerimaans', 'created_at')) {
+                    $data['created_at'] = $createdAt;
+                }
+
+                if (Schema::hasColumn('detail_penerimaans', 'updated_at')) {
+                    $data['updated_at'] = $updatedAt;
+                }
+
+                // =====================================
+                // 8. CEK DUPLIKAT
+                // =====================================
 
                 $exists = DB::table('detail_penerimaans')
                     ->where('penerimaan_id', $penerimaanId)
@@ -341,9 +366,9 @@ class ImportDetailPenerimaansFromCsv extends Command
                     continue;
                 }
 
-                // ==========================================
-                // 11. SIMPAN DATA
-                // ==========================================
+                // =====================================
+                // 9. SIMPAN DATA
+                // =====================================
 
                 $ready++;
 
@@ -356,7 +381,8 @@ class ImportDetailPenerimaansFromCsv extends Command
 
                         if ($invalid <= 10) {
                             $this->warn(
-                                "Gagal baris {$total}: {$e->getMessage()}"
+                                "Gagal menyimpan baris {$total}: " .
+                                $e->getMessage()
                             );
                         }
                     }
@@ -367,11 +393,24 @@ class ImportDetailPenerimaansFromCsv extends Command
                 }
             }
 
-            // ==========================================
-            // 12. HASIL
-            // ==========================================
+            fclose($handle);
+
+            // =====================================
+            // 10. COMMIT / ROLLBACK
+            // =====================================
+
+            if ($dryRun) {
+                DB::rollBack();
+            } else {
+                DB::commit();
+            }
+
+            // =====================================
+            // 11. HASIL IMPORT
+            // =====================================
 
             $this->newLine();
+
             $this->info('HASIL IMPORT DETAIL PENERIMAAN');
 
             $this->table(
@@ -388,19 +427,27 @@ class ImportDetailPenerimaansFromCsv extends Command
             );
 
             if ($dryRun) {
-                $this->warn('Simulasi selesai. Tidak ada data disimpan.');
+                $this->warn(
+                    'DRY RUN selesai. Tidak ada data yang disimpan.'
+                );
             } else {
-                $this->info("Import selesai. Berhasil: {$inserted}");
+                $this->info(
+                    "Import selesai. Berhasil disimpan: {$inserted}"
+                );
             }
 
             return self::SUCCESS;
 
         } catch (Throwable $e) {
-            $this->error('Kesalahan: ' . $e->getMessage());
-            return self::FAILURE;
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
 
-        } finally {
-            fclose($handle);
+            DB::rollBack();
+
+            $this->error('Import gagal: ' . $e->getMessage());
+
+            return self::FAILURE;
         }
     }
 
@@ -413,7 +460,7 @@ class ImportDetailPenerimaansFromCsv extends Command
         $handle = fopen($path, 'r');
 
         if (!$handle) {
-            $this->error("Tidak dapat membuka: {$path}");
+            $this->error("Tidak dapat membuka file: {$path}");
             return null;
         }
 
@@ -421,7 +468,7 @@ class ImportDetailPenerimaansFromCsv extends Command
 
         if ($firstLine === false) {
             fclose($handle);
-            $this->error("CSV kosong: {$path}");
+            $this->error('File CSV kosong.');
             return null;
         }
 
@@ -443,20 +490,22 @@ class ImportDetailPenerimaansFromCsv extends Command
 
         if (!$header) {
             fclose($handle);
-            $this->error('Header tidak terbaca.');
+            $this->error('Header CSV tidak terbaca.');
             return null;
         }
-
-        $header[0] = preg_replace(
-            '/^\xEF\xBB\xBF/',
-            '',
-            (string) $header[0]
-        );
 
         $columns = [];
 
         foreach ($header as $index => $name) {
-            $name = strtolower(trim((string) $name));
+            $name = preg_replace(
+                '/^\xEF\xBB\xBF/',
+                '',
+                (string) $name
+            );
+
+            $name = strtolower(trim($name));
+
+            // Hilangkan karakter selain huruf, angka, dan underscore
             $name = preg_replace('/[^a-z0-9_]/', '', $name);
 
             $columns[$name] = $index;
@@ -466,21 +515,28 @@ class ImportDetailPenerimaansFromCsv extends Command
             'Delimiter: ' . ($delimiter === "\t" ? 'TAB' : $delimiter)
         );
 
-        return [$handle, $delimiter, $this->mapHeaders($columns)];
+        return [
+            $handle,
+            $delimiter,
+            $this->mapHeaders($columns),
+        ];
     }
 
     // ==========================================
-    // NORMALISASI ALIAS HEADER
+    // NORMALISASI NAMA HEADER
     // ==========================================
 
     private function mapHeaders(array $header): array
     {
         $aliases = [
-            'penerimaan_lama' => [
-                'penerimaan_id',
-                'penerimaan',
-                'id_penerimaan',
+            'nomor_penerimaan' => [
+                'nomor_penerimaan',
+                'nomor_pene',
+                'nomor',
+                'no_penerimaan',
+                'no_pene',
             ],
+
             'kode_barang' => [
                 'kode_barang',
                 'kode_bara2',
@@ -489,6 +545,7 @@ class ImportDetailPenerimaansFromCsv extends Command
                 'kd_barang',
                 'kode',
             ],
+
             'nama_barang' => [
                 'nama_barang',
                 'nama_baran',
@@ -496,14 +553,47 @@ class ImportDetailPenerimaansFromCsv extends Command
                 'nm_barang',
                 'nama',
             ],
-            'kategori' => ['kategori'],
-            'satuan' => ['satuan'],
-            'lokasi' => ['lokasi'],
-            'qty' => ['qty', 'quantity'],
-            'harga' => ['harga', 'price'],
-            'jumlah' => ['jumlah', 'total', 'subtotal'],
-            'created_at' => ['created_at', 'created'],
-            'updated_at' => ['updated_at', 'updated'],
+
+            'kategori' => [
+                'kategori',
+                'category',
+            ],
+
+            'satuan' => [
+                'satuan',
+                'unit',
+            ],
+
+            'lokasi' => [
+                'lokasi',
+                'location',
+            ],
+
+            'qty' => [
+                'qty',
+                'quantity',
+            ],
+
+            'harga' => [
+                'harga',
+                'price',
+            ],
+
+            'jumlah' => [
+                'jumlah',
+                'total',
+                'subtotal',
+            ],
+
+            'created_at' => [
+                'created_at',
+                'created',
+            ],
+
+            'updated_at' => [
+                'updated_at',
+                'updated',
+            ],
         ];
 
         $result = [];
@@ -518,120 +608,6 @@ class ImportDetailPenerimaansFromCsv extends Command
         }
 
         return $result;
-    }
-
-    // ==========================================
-    // BACA FILE PENERIMAAN LAMA
-    // ID LAMA -> NOMOR PENERIMAAN
-    // ==========================================
-
-    private function loadReceiptMap(string $path): ?array
-    {
-        $csv = $this->openCsv($path);
-
-        if (!$csv) {
-            return null;
-        }
-
-        [$handle, $delimiter, $columns] = $csv;
-
-        $header = [];
-
-        // openCsv sudah memetakan header detail.
-        // Untuk file penerimaan, baca ulang header mentah
-        // menggunakan posisi kolom yang dibutuhkan.
-
-        $rawHeader = array_flip($columns);
-
-        // mapHeaders tidak memetakan ID lama dan nomor.
-        // Baca header file sekali lagi secara langsung.
-        rewind($handle);
-
-        $raw = fgetcsv($handle, 0, $delimiter, '"', '\\');
-
-        if (!$raw) {
-            fclose($handle);
-            return null;
-        }
-
-        $raw[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $raw[0]);
-
-        foreach ($raw as $index => $name) {
-            $name = strtolower(trim((string) $name));
-            $name = preg_replace('/[^a-z0-9_]/', '', $name);
-            $header[$name] = $index;
-        }
-
-        $idIndex = null;
-        $numberIndex = null;
-
-        foreach (['id', 'penerimaan_id', 'penerimaan'] as $name) {
-            if (isset($header[$name])) {
-                $idIndex = $header[$name];
-                break;
-            }
-        }
-
-        foreach ([
-            'nomor_penerimaan',
-            'nomor_pene',
-            'no_penerimaan',
-            'no_terima',
-        ] as $name) {
-            if (isset($header[$name])) {
-                $numberIndex = $header[$name];
-                break;
-            }
-        }
-
-        if ($idIndex === null || $numberIndex === null) {
-            fclose($handle);
-
-            $this->error(
-                'File penerimaan lama harus memiliki kolom ID dan nomor_pene.'
-            );
-
-            return null;
-        }
-
-        $map = [];
-
-        while (($row = fgetcsv(
-            $handle,
-            0,
-            $delimiter,
-            '"',
-            '\\'
-        )) !== false) {
-            $oldId = trim((string) ($row[$idIndex] ?? ''));
-            $number = trim((string) ($row[$numberIndex] ?? ''));
-
-            if (
-                $oldId === '' ||
-                !ctype_digit($oldId) ||
-                $number === ''
-            ) {
-                continue;
-            }
-
-            $oldId = (string) ((int) $oldId);
-
-            if (isset($map[$oldId]) && $map[$oldId] !== $number) {
-                fclose($handle);
-
-                $this->error(
-                    "ID penerimaan lama {$oldId} memiliki nomor berbeda."
-                );
-
-                return null;
-            }
-
-            $map[$oldId] = $number;
-        }
-
-        fclose($handle);
-
-        return $map;
     }
 
     // ==========================================
@@ -658,11 +634,13 @@ class ImportDetailPenerimaansFromCsv extends Command
             $value = str_replace(',', '.', $value);
         }
 
-        return is_numeric($value) ? (float) $value : null;
+        return is_numeric($value)
+            ? (float) $value
+            : null;
     }
 
     // ==========================================
-    // PARSE TANGGAL
+    // PARSE TANGGAL DBF
     // ==========================================
 
     private function parseDate(string $value, string $fallback): string
@@ -671,6 +649,26 @@ class ImportDetailPenerimaansFromCsv extends Command
 
         if ($value === '') {
             return $fallback;
+        }
+
+        $formats = [
+            'Y-m-d H:i:s',
+            'Y-m-d H:i',
+            'Y-m-d',
+            'd/m/Y H:i:s',
+            'd/m/Y H:i',
+            'd/m/Y',
+            'd-m-Y H:i:s',
+            'd-m-Y H:i',
+            'd-m-Y',
+        ];
+
+        foreach ($formats as $format) {
+            $date = \DateTime::createFromFormat($format, $value);
+
+            if ($date !== false) {
+                return $date->format('Y-m-d H:i:s');
+            }
         }
 
         $timestamp = strtotime($value);
@@ -682,4 +680,3 @@ class ImportDetailPenerimaansFromCsv extends Command
         return date('Y-m-d H:i:s', $timestamp);
     }
 }
-

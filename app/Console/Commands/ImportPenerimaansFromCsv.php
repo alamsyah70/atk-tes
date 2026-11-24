@@ -6,47 +6,55 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
+use Throwable;
 
 class ImportPenerimaansFromCsv extends Command
 {
     protected $signature = 'atk:import-penerimaans
-                            {file=D:\IT\App\Data\penerimaans.csv : Lokasi file CSV}
-                            {--branch= : ID cabang tujuan}
-                            {--dry-run : Simulasi tanpa menyimpan data}';
+        {file=D:\IT\App\migrasi\penerimaans.csv}
+        {--branch=}
+        {--dry-run}';
 
-    protected $description = 'Import data penerimaan dari CSV hasil konversi DBF';
+    protected $description = 'Import data penerimaan dari CSV dengan pencocokan kode supplier berdasarkan cabang';
 
     public function handle()
     {
-        $file = $this->argument('file');
-        $branchId = $this->option('branch');
-        $dryRun = $this->option('dry-run');
+        $path = $this->argument('file');
 
-        if (!$branchId) {
-            $this->error('Parameter --branch wajib diisi.');
+        // Mendukung path absolut Windows maupun path relatif project
+        $file = preg_match('/^[A-Za-z]:[\/\\\\]/', $path)
+            ? $path
+            : base_path($path);
+
+        if (!file_exists($file)) {
+            $this->error("File tidak ditemukan: {$file}");
             return self::FAILURE;
         }
 
-        if (!is_file($file)) {
-            $this->error("File CSV tidak ditemukan: {$file}");
+        $branchId = $this->option('branch');
+
+        if (!$branchId) {
+            $this->error('Parameter --branch wajib diisi.');
+            $this->line('Contoh: php artisan atk:import-penerimaans --branch=7 --dry-run');
             return self::FAILURE;
         }
 
         if (!DB::table('branches')->where('id', $branchId)->exists()) {
-            $this->error("Cabang {$branchId} tidak ditemukan.");
+            $this->error("Cabang dengan ID {$branchId} tidak ditemukan.");
             return self::FAILURE;
         }
 
-        foreach (['branch_id', 'supplier_id', 'tanggal', 'nomor_penerimaan'] as $column) {
+        // Pastikan kolom penting tersedia
+        $requiredColumns = [
+            'branch_id',
+            'supplier_id',
+            'nomor_penerimaan',
+            'tanggal',
+        ];
+
+        foreach ($requiredColumns as $column) {
             if (!Schema::hasColumn('penerimaans', $column)) {
                 $this->error("Kolom penerimaans.{$column} tidak ditemukan.");
-                return self::FAILURE;
-            }
-        }
-
-        foreach (['id', 'kode_supplier', 'branch_id'] as $column) {
-            if (!Schema::hasColumn('suppliers', $column)) {
-                $this->error("Kolom suppliers.{$column} tidak ditemukan.");
                 return self::FAILURE;
             }
         }
@@ -54,220 +62,291 @@ class ImportPenerimaansFromCsv extends Command
         $handle = fopen($file, 'r');
 
         if (!$handle) {
-            $this->error('File CSV tidak dapat dibuka.');
+            $this->error('Gagal membuka file CSV.');
             return self::FAILURE;
         }
 
+        // Baca header CSV
         $headers = fgetcsv($handle, 0, ',');
 
         if (!$headers) {
             fclose($handle);
-            $this->error('Header CSV tidak ditemukan.');
+            $this->error('Header CSV tidak ditemukan atau file kosong.');
             return self::FAILURE;
         }
 
         $headers = array_map(function ($header) {
-            $header = preg_replace('/^\xEF\xBB\xBF/', '', $header);
+            $header = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header);
             return strtolower(trim($header));
         }, $headers);
 
-        /*
-         * PEMETAAN KOLOM DBF
-         *
-         * Sesuaikan daftar kandidat jika nama header DBF berbeda.
-         */
-        $mapping = [
-            'kode_supplier' => [
-                'kode_supplier',
-                'supplier_id',
-                'supplier_i',
-                'supplier',
-                'sup',
-                'kode_sup',
-                'kd_supplier',
-                'kd_sup',
-            ],
-        
+        $headerIndex = [];
+
+        foreach ($headers as $index => $header) {
+            $headerIndex[$header] = $index;
+        }
+
+        // Alias header CSV
+        $aliases = [
             'nomor_penerimaan' => [
                 'nomor_penerimaan',
                 'nomor_pene',
-                'no_penerimaan',
-                'no_terima',
-                'noterima',
-                'no_trm',
-                'notrm',
                 'nomor',
-                'no_bukti',
+                'no_penerimaan',
+                'no_pene',
             ],
-        
+
+            // Kolom supplier_i dari DBF berisi KODE supplier
+            'kode_supplier' => [
+                'supplier_i',
+                'kode_supplier',
+                'kode_sup',
+                'sup',
+                'kd_supplier',
+                'kd_sup',
+                'supplier_code',
+            ],
+
+            // Digunakan jika CSV memiliki nama supplier secara terpisah
+            'nama_supplier' => [
+                'nama_supplier',
+                'nama_sup',
+                'supplier_name',
+                'nama',
+            ],
+
             'tanggal' => [
                 'tanggal',
                 'tgl',
-                'tgl_terima',
-                'tanggal_terima',
-                'tgl_penerimaan',
+                'date',
             ],
-        
+
             'keterangan' => [
                 'keterangan',
                 'ket',
-                'catatan',
-                'uraian',
+                'description',
+            ],
+
+            'bukti_po' => [
+                'bukti_po',
+                'bukti',
+                'file_po',
             ],
         ];
 
-        $columnIndex = [];
+        // Cari indeks setiap kolom berdasarkan alias
+        $columns = [];
 
-        foreach ($mapping as $target => $candidates) {
-            foreach ($candidates as $candidate) {
-                $index = array_search($candidate, $headers, true);
+        foreach ($aliases as $field => $fieldAliases) {
+            $columns[$field] = null;
 
-                if ($index !== false) {
-                    $columnIndex[$target] = $index;
+            foreach ($fieldAliases as $alias) {
+                if (array_key_exists($alias, $headerIndex)) {
+                    $columns[$field] = $headerIndex[$alias];
                     break;
                 }
             }
         }
 
-        $requiredMappings = [
-            'kode_supplier',
-            'nomor_penerimaan',
-            'tanggal',
-        ];
+        // Nomor, tanggal, dan salah satu identitas supplier wajib tersedia
+        if (
+            $columns['nomor_penerimaan'] === null ||
+            $columns['tanggal'] === null ||
+            (
+                $columns['kode_supplier'] === null &&
+                $columns['nama_supplier'] === null
+            )
+        ) {
+            fclose($handle);
 
-        foreach ($requiredMappings as $field) {
-            if (!isset($columnIndex[$field])) {
-                fclose($handle);
-
-                $this->error("Kolom {$field} tidak ditemukan dalam CSV.");
-                $this->line('Header yang ditemukan: ' . implode(', ', $headers));
-
-                return self::FAILURE;
-            }
+            $this->error('Kolom wajib tidak ditemukan di CSV.');
+            $this->line('Header yang terbaca: ' . implode(', ', $headers));
+            $this->line('Pastikan ada nomor_pene, supplier_i, dan tanggal.');
+            return self::FAILURE;
         }
 
-        $hasKeterangan = Schema::hasColumn('penerimaans', 'keterangan');
-        $hasCreatedAt = Schema::hasColumn('penerimaans', 'created_at');
-        $hasUpdatedAt = Schema::hasColumn('penerimaans', 'updated_at');
+        $this->info("File: {$file}");
+        $this->info("Cabang: {$branchId}");
 
-        $inserted = 0;
-        $duplicate = 0;
-        $invalid = 0;
-        $supplierNotFound = 0;
-        $rowNumber = 1;
-
-        $seenNumbers = [];
-
-        $this->info('Memulai pemeriksaan penerimaan...');
-        $this->info("Cabang tujuan: {$branchId}");
-
-        if ($dryRun) {
-            $this->warn('DRY RUN: tidak ada data yang disimpan.');
+        if ($this->option('dry-run')) {
+            $this->warn('MODE DRY RUN: tidak ada data yang akan disimpan.');
         }
+
+        $total = 0;
+        $berhasil = 0;
+        $gagal = 0;
+        $duplikat = 0;
+
+        $nomorDalamCsv = [];
+
+        DB::beginTransaction();
 
         try {
-            DB::beginTransaction();
-
             while (($row = fgetcsv($handle, 0, ',')) !== false) {
-                $rowNumber++;
+                // Lewati baris kosong
+                if (count(array_filter($row, function ($value) {
+                    return trim((string) $value) !== '';
+                })) === 0) {
+                    continue;
+                }
 
-                $getValue = function ($field) use ($columnIndex, $row) {
-                    if (!isset($columnIndex[$field])) {
-                        return '';
+                $total++;
+
+                $getValue = function ($field) use ($columns, $row) {
+                    $index = $columns[$field] ?? null;
+
+                    if ($index === null || !isset($row[$index])) {
+                        return null;
                     }
 
-                    return trim((string) ($row[$columnIndex[$field]] ?? ''));
+                    $value = trim((string) $row[$index]);
+
+                    return $value === '' ? null : $value;
                 };
 
-                $kodeSupplier = $getValue('kode_supplier');
                 $nomor = $getValue('nomor_penerimaan');
+                $kodeSupplier = $getValue('kode_supplier');
+                $namaSupplier = $getValue('nama_supplier');
                 $tanggalRaw = $getValue('tanggal');
                 $keterangan = $getValue('keterangan');
+                $buktiPo = $getValue('bukti_po');
 
-                if ($kodeSupplier === '' || $nomor === '' || $tanggalRaw === '') {
-                    $invalid++;
+                // Validasi nomor penerimaan
+                if (!$nomor) {
+                    $gagal++;
+                    $this->warn("Baris {$total}: nomor penerimaan kosong.");
                     continue;
                 }
 
-                // Konversi tanggal
-                try {
-                    $tanggal = $this->parseTanggal($tanggalRaw);
-                } catch (\Throwable $e) {
-                    $this->warn("Baris {$rowNumber}: tanggal tidak valid ({$tanggalRaw}).");
-                    $invalid++;
+                // Validasi tanggal
+                $tanggal = $this->parseTanggal($tanggalRaw);
+
+                if (!$tanggal) {
+                    $gagal++;
+                    $this->warn(
+                        "Baris {$total}: tanggal tidak valid '{$tanggalRaw}'."
+                    );
                     continue;
                 }
 
-                // Cari supplier pada cabang tujuan
-                $supplier = DB::table('suppliers')
-                    ->where('branch_id', $branchId)
-                    ->where('kode_supplier', $kodeSupplier)
-                    ->first();
+                // Cari supplier berdasarkan kode terlebih dahulu
+                $supplierQuery = DB::table('suppliers')
+                    ->where('branch_id', $branchId);
 
-                if (!$supplier) {
-                    $supplierNotFound++;
+                if ($kodeSupplier) {
+                    $supplierQuery->whereRaw(
+                        'UPPER(TRIM(kode_supplier)) = ?',
+                        [strtoupper(trim($kodeSupplier))]
+                    );
+                } else {
+                    // Fallback jika CSV hanya memiliki nama supplier
+                    $supplierQuery->whereRaw(
+                        'UPPER(TRIM(nama_supplier)) = ?',
+                        [strtoupper(trim($namaSupplier))]
+                    );
+                }
+
+                $suppliers = $supplierQuery->limit(2)->get();
+
+                if ($suppliers->isEmpty()) {
+                    $gagal++;
+
+                    $identitas = $kodeSupplier
+                        ? "kode supplier '{$kodeSupplier}'"
+                        : "nama supplier '{$namaSupplier}'";
+
+                    $this->warn(
+                        "Baris {$total}: {$identitas} tidak ditemukan di cabang {$branchId}."
+                    );
+
                     continue;
                 }
 
-                // Cegah duplikasi dalam CSV yang sama
-                $uniqueKey = $branchId . '|' . $nomor;
+                if ($suppliers->count() > 1) {
+                    $gagal++;
 
-                if (isset($seenNumbers[$uniqueKey])) {
-                    $duplicate++;
+                    $this->warn(
+                        "Baris {$total}: supplier '{$kodeSupplier}' ditemukan lebih dari satu."
+                    );
+
                     continue;
                 }
 
-                $seenNumbers[$uniqueKey] = true;
+                $supplierId = $suppliers->first()->id;
 
-                // Cegah duplikasi dengan data database
+                // Cek nomor penerimaan duplikat di CSV
+                $duplicateKey = $branchId . '|' . strtoupper($nomor);
+
+                if (isset($nomorDalamCsv[$duplicateKey])) {
+                    $duplikat++;
+
+                    $this->warn(
+                        "Baris {$total}: nomor {$nomor} duplikat di dalam CSV."
+                    );
+
+                    continue;
+                }
+
+                $nomorDalamCsv[$duplicateKey] = true;
+
+                // Cek nomor penerimaan yang sudah ada di database
                 $exists = DB::table('penerimaans')
                     ->where('branch_id', $branchId)
                     ->where('nomor_penerimaan', $nomor)
                     ->exists();
 
                 if ($exists) {
-                    $duplicate++;
+                    $duplikat++;
+
+                    $this->warn(
+                        "Baris {$total}: nomor {$nomor} sudah ada di database."
+                    );
+
                     continue;
                 }
 
+                $now = now();
+
                 $data = [
                     'branch_id' => $branchId,
-                    'supplier_id' => $supplier->id,
-                    'tanggal' => $tanggal,
+                    'supplier_id' => $supplierId,
                     'nomor_penerimaan' => $nomor,
+                    'tanggal' => $tanggal,
                 ];
 
-                if ($hasKeterangan) {
-                    $data['keterangan'] = $keterangan ?: null;
+                if (Schema::hasColumn('penerimaans', 'keterangan')) {
+                    $data['keterangan'] = $keterangan;
                 }
 
-                if ($hasCreatedAt) {
-                    $data['created_at'] = now();
+                if (Schema::hasColumn('penerimaans', 'bukti_po')) {
+                    $data['bukti_po'] = $buktiPo;
                 }
 
-                if ($hasUpdatedAt) {
-                    $data['updated_at'] = now();
+                if (Schema::hasColumn('penerimaans', 'created_at')) {
+                    $data['created_at'] = $now;
                 }
 
-                if (!$dryRun) {
-                    DB::table('penerimaans')->insert($data);
+                if (Schema::hasColumn('penerimaans', 'updated_at')) {
+                    $data['updated_at'] = $now;
                 }
 
-                $inserted++;
+                DB::table('penerimaans')->insert($data);
+
+                $berhasil++;
             }
 
             fclose($handle);
 
-            if ($dryRun) {
+            if ($this->option('dry-run')) {
                 DB::rollBack();
+                $this->warn('DRY RUN selesai. Seluruh perubahan database dibatalkan.');
             } else {
                 DB::commit();
+                $this->info('Import berhasil disimpan.');
             }
 
-        } catch (\Throwable $e) {
-            if (is_resource($handle)) {
-                fclose($handle);
-            }
+        } catch (Throwable $e) {
+            fclose($handle);
 
             DB::rollBack();
 
@@ -277,59 +356,57 @@ class ImportPenerimaansFromCsv extends Command
         }
 
         $this->newLine();
-
-        $this->info('HASIL IMPORT PENERIMAAN');
-
-        $this->table(
-            ['Keterangan', 'Jumlah'],
-            [
-                ['Siap diimport / berhasil', $inserted],
-                ['Duplikat', $duplicate],
-                ['Supplier tidak ditemukan', $supplierNotFound],
-                ['Data tidak valid', $invalid],
-                ['Total diperiksa', $inserted + $duplicate + $supplierNotFound + $invalid],
-            ]
-        );
-
-        if ($dryRun) {
-            $this->warn('Simulasi selesai. Belum ada data yang disimpan.');
-        } else {
-            $this->info('Import penerimaan selesai.');
-        }
+        $this->info('========== HASIL IMPORT ==========');
+        $this->line("Total baris     : {$total}");
+        $this->line("Berhasil        : {$berhasil}");
+        $this->line("Gagal           : {$gagal}");
+        $this->line("Duplikat        : {$duplikat}");
+        $this->info('==================================');
 
         return self::SUCCESS;
     }
 
-    private function parseTanggal(string $value): string
-{
-    $value = trim($value);
+    /**
+     * Mengubah berbagai format tanggal CSV menjadi Y-m-d.
+     */
+    private function parseTanggal(?string $value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
 
-    $formats = [
-        'd/m/Y:H:i',
-        'd/m/Y H:i',
-        'd/m/Y',
-        'd-m-Y',
-        'Y-m-d H:i:s',
-        'Y-m-d',
-        'm/d/Y',
-        'd/m/y',
-        'd-m-y',
-    ];
+        $value = trim($value);
 
-    foreach ($formats as $format) {
-        try {
-            $date = Carbon::createFromFormat('!' . $format, $value);
+        $formats = [
+            'd/m/Y:H:i:s',
+            'd/m/Y:H:i',
+            'd/m/Y H:i:s',
+            'd/m/Y H:i',
+            'd/m/Y',
+            'Y-m-d H:i:s',
+            'Y-m-d H:i',
+            'Y-m-d',
+            'd-m-Y H:i:s',
+            'd-m-Y H:i',
+            'd-m-Y',
+        ];
 
-            if ($date && $date->format($format) === $value) {
-                return $date->format('Y-m-d');
+        foreach ($formats as $format) {
+            try {
+                $date = Carbon::createFromFormat($format, $value);
+
+                if ($date !== false) {
+                    return $date->format('Y-m-d');
+                }
+            } catch (Throwable $e) {
+                // Coba format berikutnya
             }
-        } catch (\Throwable $e) {
-            // Coba format berikutnya
+        }
+
+        try {
+            return Carbon::parse($value)->format('Y-m-d');
+        } catch (Throwable $e) {
+            return null;
         }
     }
-
-    throw new \InvalidArgumentException(
-        "Format tanggal tidak dikenali: {$value}"
-    );
-}
 }

@@ -335,6 +335,8 @@
         }
     }
 </style>
+
+
 <div class="container-fluid laporan-page">
 
     <div class="page-heading">

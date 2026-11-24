@@ -11,7 +11,7 @@ use Carbon\Carbon;
 class ImportBarangsFromCsv extends Command
 {
     protected $signature = 'atk:import-barangs
-                            {file=D:\IT\App\Data\barangs.csv : Lokasi CSV}
+                            {file=D:\IT\App\migrasi\barangs.csv : Lokasi CSV}
                             {--branch= : ID cabang tujuan}
                             {--dry-run : Simulasi tanpa menyimpan data}';
 

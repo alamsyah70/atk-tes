@@ -491,4 +491,405 @@ public function penyesuaian(Request $request)
 
         return $pdf->stream('laporan-penyesuaian-stok.pdf');
     }
+
+    /**
+ * VALIDASI PERIODE LAPORAN BULANAN.
+ */
+private function filterPeriodeLaporan(Request $request): array
+{
+    $validated = $request->validate([
+        'bulan' => ['nullable', 'integer', 'between:1,12'],
+        'tahun' => ['nullable', 'integer', 'between:2000,2100'],
+        'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+    ]);
+
+    return [
+        'bulan' => (int) ($validated['bulan'] ?? now()->month),
+        'tahun' => (int) ($validated['tahun'] ?? now()->year),
+        'branch_id' => $validated['branch_id'] ?? null,
+    ];
+}
+
+/**
+ * LAPORAN PENERIMAAN PER SUPPLIER / KATEGORI.
+ * Data dikelompokkan berdasarkan supplier, kemudian kategori.
+ */
+public function penerimaanSupplierPdf(Request $request)
+{
+    $filter = $this->filterPeriodeLaporan($request);
+
+    $query = DB::table('detail_penerimaans as dp')
+        ->join('penerimaans as p', 'p.id', '=', 'dp.penerimaan_id')
+        ->leftJoin('suppliers as s', 's.id', '=', 'p.supplier_id')
+        ->leftJoin('branches as b', 'b.id', '=', 'p.branch_id')
+        ->whereYear('p.tanggal', $filter['tahun'])
+        ->whereMonth('p.tanggal', $filter['bulan']);
+
+    if (!$this->isGlobalUser()) {
+        $query->where('p.branch_id', $this->branchId());
+    } elseif (!empty($filter['branch_id'])) {
+        $query->where('p.branch_id', $filter['branch_id']);
+    }
+
+    $data = $query->select([
+            'p.id as penerimaan_id',
+            'p.tanggal',
+            'p.nomor_penerimaan',
+            'p.branch_id',
+            's.id as supplier_id',
+            's.nama_supplier',
+            'b.nama_cabang',
+            'dp.kode_barang',
+            'dp.nama_barang',
+            'dp.kategori',
+            'dp.satuan',
+            'dp.qty',
+            'dp.harga',
+            'dp.jumlah',
+        ])
+        ->orderBy('s.nama_supplier')
+        ->orderBy('dp.kategori')
+        ->orderBy('p.tanggal')
+        ->orderBy('p.id')
+        ->get();
+
+    $groups = $data->groupBy(function ($item) {
+        return $item->supplier_id ?? 'tanpa-supplier';
+    });
+
+    $totalQty = (float) $data->sum('qty');
+    $totalNilai = (float) $data->sum('jumlah');
+
+    $pdf = Pdf::loadView('laporan.penerimaan-supplier-pdf', [
+        'groups' => $groups,
+        'filter' => $filter,
+        'totalQty' => $totalQty,
+        'totalNilai' => $totalNilai,
+        'isGlobalUser' => $this->isGlobalUser(),
+    ])->setPaper('a4', 'landscape');
+
+    return $pdf->stream('laporan-penerimaan-per-supplier.pdf');
+}
+
+/**
+ * LAPORAN PEMAKAIAN PER DIVISI / KATEGORI.
+ * Data dikelompokkan berdasarkan divisi, kemudian kategori.
+ */
+public function pemakaianDivisiPdf(Request $request)
+{
+    $filter = $this->filterPeriodeLaporan($request);
+
+    $query = DB::table('detail_pengeluarans as dp')
+        ->join('pengeluarans as pg', 'pg.id', '=', 'dp.pengeluaran_id')
+        ->leftJoin('branches as b', 'b.id', '=', 'pg.branch_id')
+        ->whereYear('pg.tanggal', $filter['tahun'])
+        ->whereMonth('pg.tanggal', $filter['bulan']);
+
+    if (!$this->isGlobalUser()) {
+        $query->where('pg.branch_id', $this->branchId());
+    } elseif (!empty($filter['branch_id'])) {
+        $query->where('pg.branch_id', $filter['branch_id']);
+    }
+
+    $data = $query->select([
+            'pg.id as pengeluaran_id',
+            'pg.nomor_pengeluaran',
+            'pg.tanggal',
+            'pg.divisi',
+            'pg.nama_pengambil',
+            'pg.branch_id',
+            'b.nama_cabang',
+            'dp.kode_barang',
+            'dp.nama_barang',
+            'dp.kategori',
+            'dp.satuan',
+            'dp.qty',
+            'dp.harga_pokok',
+            'dp.jumlah_harga_pokok',
+        ])
+        ->orderBy('pg.divisi')
+        ->orderBy('dp.kategori')
+        ->orderBy('pg.tanggal')
+        ->orderBy('pg.id')
+        ->get();
+
+    $groups = $data->groupBy(function ($item) {
+        return $item->divisi ?: 'Tanpa Divisi';
+    });
+
+    $totalQty = (float) $data->sum('qty');
+    $totalNilai = (float) $data->sum('jumlah_harga_pokok');
+
+    $pdf = Pdf::loadView('laporan.pemakaian-divisi-pdf', [
+        'groups' => $groups,
+        'filter' => $filter,
+        'totalQty' => $totalQty,
+        'totalNilai' => $totalNilai,
+        'isGlobalUser' => $this->isGlobalUser(),
+    ])->setPaper('a4', 'landscape');
+
+    return $pdf->stream('laporan-pemakaian-per-divisi.pdf');
+}
+
+    /**
+     * LAPORAN TAHUNAN PEMAKAIAN PER DIVISI.
+     * Membandingkan nilai pemakaian bulan ini dengan bulan sebelumnya.
+     */
+
+    public function pemakaianTahunanPdf(Request $request)
+    {
+        // =========================================
+        // 1. VALIDASI FILTER
+        // =========================================
+        $validated = $request->validate([
+            'tahun' => ['nullable', 'integer', 'between:2000,2100'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        $tahun = (int) ($validated['tahun'] ?? now()->year);
+        $branchId = $validated['branch_id'] ?? null;
+
+        $isGlobalUser = $this->isGlobalUser();
+
+        // =========================================
+        // 2. QUERY DATA PEMAKAIAN
+        // =========================================
+        $subQuery = DB::table('detail_pengeluarans as dp')
+            ->join('pengeluarans as pg', 'pg.id', '=', 'dp.pengeluaran_id')
+            ->whereYear('pg.tanggal', $tahun);
+
+        // User cabang hanya dapat melihat cabangnya sendiri
+        if (!$isGlobalUser) {
+
+            $userBranchId = $this->branchId();
+
+            abort_if(
+                !$userBranchId,
+                403,
+                'User belum memiliki cabang.'
+            );
+
+            $subQuery->where('pg.branch_id', $userBranchId);
+
+            $branchId = $userBranchId;
+
+        } elseif (!empty($branchId)) {
+
+            // Global user dapat memilih cabang tertentu
+            $subQuery->where('pg.branch_id', $branchId);
+        }
+
+        // Normalisasi nama divisi di subquery
+        $subQuery->selectRaw("
+            COALESCE(
+                NULLIF(TRIM(pg.divisi), ''),
+                'Tanpa Divisi'
+            ) AS divisi,
+            MONTH(pg.tanggal) AS bulan,
+            dp.qty,
+            dp.jumlah_harga_pokok
+        ");
+
+        // =========================================
+        // 3. AGREGASI PER DIVISI DAN BULAN
+        // =========================================
+        $raw = DB::query()
+            ->fromSub($subQuery, 'data')
+            ->selectRaw("
+                data.divisi,
+                data.bulan,
+                COALESCE(SUM(data.qty), 0) AS total_qty,
+                COALESCE(SUM(data.jumlah_harga_pokok), 0) AS total_nilai
+            ")
+            ->groupBy('data.divisi', 'data.bulan')
+            ->orderBy('data.divisi')
+            ->orderBy('data.bulan')
+            ->get();
+
+        // =========================================
+        // 4. DAFTAR NAMA BULAN
+        // =========================================
+        $namaBulan = [
+            1  => 'Januari',
+            2  => 'Februari',
+            3  => 'Maret',
+            4  => 'April',
+            5  => 'Mei',
+            6  => 'Juni',
+            7  => 'Juli',
+            8  => 'Agustus',
+            9  => 'September',
+            10 => 'Oktober',
+            11 => 'November',
+            12 => 'Desember',
+        ];
+
+        // =========================================
+        // 5. SIAPKAN DATA SETIAP DIVISI
+        // =========================================
+        $divisiList = $raw
+            ->pluck('divisi')
+            ->unique()
+            ->values();
+
+        $dataTahunan = [];
+
+        foreach ($divisiList as $divisi) {
+
+            $dataTahunan[$divisi] = [];
+
+            for ($bulan = 1; $bulan <= 12; $bulan++) {
+
+                $item = $raw->first(function ($row) use ($divisi, $bulan) {
+                    return $row->divisi === $divisi
+                        && (int) $row->bulan === $bulan;
+                });
+
+                $dataTahunan[$divisi][$bulan] = [
+                    'qty' => (float) ($item->total_qty ?? 0),
+                    'nilai' => (float) ($item->total_nilai ?? 0),
+                ];
+            }
+        }
+
+        // =========================================
+        // 6. TOTAL PER BULAN
+        // =========================================
+        $totalBulanan = [];
+
+        for ($bulan = 1; $bulan <= 12; $bulan++) {
+
+            $totalBulanan[$bulan] = [
+                'qty' => 0,
+                'nilai' => 0,
+            ];
+
+            foreach ($dataTahunan as $divisi => $dataBulan) {
+
+                $totalBulanan[$bulan]['qty'] +=
+                    $dataBulan[$bulan]['qty'];
+
+                $totalBulanan[$bulan]['nilai'] +=
+                    $dataBulan[$bulan]['nilai'];
+            }
+        }
+
+        // =========================================
+        // 7. HITUNG TOTAL TAHUNAN
+        // =========================================
+        $grandTotalQty = 0;
+        $grandTotalNilai = 0;
+
+        foreach ($totalBulanan as $total) {
+
+            $grandTotalQty += $total['qty'];
+
+            $grandTotalNilai += $total['nilai'];
+        }
+
+        // =========================================
+        // 8. HITUNG KENAIKAN / PENURUNAN
+        // =========================================
+        $perubahanBulanan = [];
+
+        for ($bulan = 1; $bulan <= 12; $bulan++) {
+
+            $nilaiSekarang = $totalBulanan[$bulan]['nilai'];
+
+            if ($bulan === 1) {
+
+                $perubahanBulanan[$bulan] = [
+                    'selisih' => 0,
+                    'persentase' => 0,
+                    'status' => 'Awal Tahun',
+                ];
+
+                continue;
+            }
+
+            $nilaiSebelumnya = $totalBulanan[$bulan - 1]['nilai'];
+
+            $selisih = $nilaiSekarang - $nilaiSebelumnya;
+
+            if ($nilaiSebelumnya > 0) {
+
+                $persentase = ($selisih / $nilaiSebelumnya) * 100;
+
+            } else {
+
+                $persentase = $nilaiSekarang > 0 ? 100 : 0;
+            }
+
+            if ($nilaiSebelumnya == 0 && $nilaiSekarang > 0) {
+
+                $status = 'Mulai Ada Pemakaian';
+
+            } elseif ($selisih > 0) {
+
+                $status = 'Naik';
+
+            } elseif ($selisih < 0) {
+
+                $status = 'Turun';
+
+            } else {
+
+                $status = 'Tetap';
+            }
+
+            $perubahanBulanan[$bulan] = [
+                'selisih' => $selisih,
+                'persentase' => $persentase,
+                'status' => $status,
+            ];
+        }
+
+        // =========================================
+        // 9. INFORMASI CABANG
+        // =========================================
+        $namaCabang = 'Semua Cabang';
+
+        if (!empty($branchId)) {
+
+            $namaCabang = DB::table('branches')
+                ->where('id', $branchId)
+                ->value('nama_cabang') ?? 'Cabang Tidak Diketahui';
+
+        } elseif (!$isGlobalUser) {
+
+            $namaCabang = DB::table('branches')
+                ->where('id', $this->branchId())
+                ->value('nama_cabang') ?? 'Cabang Tidak Diketahui';
+        }
+
+        // =========================================
+        // 10. GENERATE PDF
+        // =========================================
+        $pdf = Pdf::loadView(
+            'laporan.pemakaian-tahunan-pdf',
+            compact(
+                'tahun',
+                'namaBulan',
+                'divisiList',
+                'dataTahunan',
+                'totalBulanan',
+                'grandTotalQty',
+                'grandTotalNilai',
+                'perubahanBulanan',
+                'namaCabang'
+            )
+        )->setPaper('a3', 'landscape');
+
+        return $pdf->stream(
+            'laporan-pemakaian-tahunan-' . $tahun . '.pdf'
+        );
+    }
+
+
+public function laporan (Request $request)
+    {
+        $this->validateFilter($request);
+
+        return view('laporan.index');
+    }
 }

@@ -1128,17 +1128,17 @@ class DashboardController extends Controller
             ->sum('dp.qty');
 
             // 4. Hitung barang keluar
-            $stokKeluar = DB::table('detail_pengeluarans as dp')
-            ->join('pengeluarans as p', 'dp.pengeluaran_id', '=', 'p.id')
-            ->where('p.branch_id', $branchId)
-            ->where(function ($query) use ($barang, $kodeLama) {
-                $query->where('dp.barang_id', $barang->id)
-                    ->orWhere(function ($subQuery) use ($kodeLama) {
-                        $subQuery->whereNull('dp.barang_id')
-                            ->where('dp.kode_barang', $kodeLama);
-                    });
-            })
-            ->sum('dp.qty');
+        $stokKeluar = DB::table('detail_pengeluarans as dp')
+        ->join('pengeluarans as p', 'dp.pengeluaran_id', '=', 'p.id')
+        ->where('p.branch_id', $branchId)
+        ->where(function ($query) use ($barang, $kodeLama) {
+            $query->where('dp.barang_id', $barang->id)
+                ->orWhere(function ($subQuery) use ($kodeLama) {
+                    $subQuery->whereNull('dp.barang_id')
+                        ->where('dp.kode_barang', $kodeLama);
+                });
+        })
+        ->sum('dp.qty');
 
             // 5. Hitung penyesuaian stok
             // Mendukung histori lama yang belum memiliki barang_id.
@@ -1215,56 +1215,41 @@ class DashboardController extends Controller
 
     public function destroy($id)
     {
-        $user = auth()->user();
-        $isGlobal = $this->isGlobalUser();
+        // Ambil data penerimaan sesuai hak akses user
+        $query = Penerimaan::query();
 
-        if (!$isGlobal) {
-            abort_if(!$user->branch_id, 403, 'User belum memiliki cabang.');
+        if (!$this->isGlobalUser()) {
+            $query->where('branch_id', auth()->user()->branch_id);
         }
 
-        DB::transaction(function () use ($id, $user, $isGlobal) {
+        $penerimaan = $query->findOrFail($id);
 
-            // 1. Ambil Master Barang
-            $query = Barang::query()->where('id', $id);
+        // Simpan lokasi foto sebelum data dihapus
+        $buktiPoPath = $penerimaan->bukti_po;
 
-            if (!$isGlobal) {
-                $query->where('branch_id', $user->branch_id);
-            }
+        DB::transaction(function () use ($penerimaan) {
 
-            $barang = $query->lockForUpdate()->firstOrFail();
+            // Hapus detail penerimaan terlebih dahulu
+            DetailPenerimaan::where(
+                'penerimaan_id',
+                $penerimaan->id
+            )->delete();
 
-            $branchId = $barang->branch_id;
-
-            // 2. Cek histori penerimaan berdasarkan barang_id
-            $totalMasuk = DB::table('detail_penerimaans')
-                ->where('barang_id', $barang->id)
-                ->sum('qty');
-
-            // 3. Cek histori pengeluaran berdasarkan barang_id
-            $totalKeluar = DB::table('detail_pengeluarans')
-                ->where('barang_id', $barang->id)
-                ->sum('qty');
-
-            // 4. Cek histori penyesuaian
-            $adaPenyesuaian = DB::table('penyesuaian_stoks')
-                ->where('branch_id', $branchId)
-                ->where('kode_barang', $barang->kode_barang)
-                ->exists();
-
-            // 5. Tolak jika sudah memiliki histori transaksi
-            if ($totalMasuk > 0 || $totalKeluar > 0 || $adaPenyesuaian) {
-                throw ValidationException::withMessages([
-                    'barang' => 'Barang tidak dapat dihapus karena sudah memiliki histori penerimaan, pengeluaran, atau penyesuaian stok.',
-                ]);
-            }
-
-            // 6. Hapus Master Barang
-            $barang->delete();
+            // Hapus header penerimaan
+            $penerimaan->delete();
         });
 
+        // Hapus foto setelah transaksi database berhasil
+        if (
+            $buktiPoPath &&
+            Storage::disk('public')->exists($buktiPoPath)
+        ) {
+            Storage::disk('public')->delete($buktiPoPath);
+        }
+
         return redirect()
-            ->route('databarang.barang')
-            ->with('success', 'Master barang berhasil dihapus!');
+            ->route('databarang.penerimaan')
+            ->with('success', 'Penerimaan dan foto bukti PO berhasil dihapus!');
     }
 
     public function penerimaanPdf($id)
