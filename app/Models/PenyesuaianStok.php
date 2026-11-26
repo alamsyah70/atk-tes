@@ -8,6 +8,7 @@ class PenyesuaianStok extends Model
 {
     protected $fillable = [
         'branch_id',
+        'barang_id',
         'user_id',
         'nomor_penyesuaian',
         'kode_barang',

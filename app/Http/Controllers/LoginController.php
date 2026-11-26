@@ -37,10 +37,12 @@ class LoginController extends Controller
             // Tolak user yang belum diberikan role.
             if (!$user->hasAnyRole([
                 'Super Admin',
-                'Admin Pusat',
-                'Admin Cabang',
-                'Petugas Gudang',
-                'Viewer',
+                'IT Cabang',
+                // 'Admin Pusat',
+                'Admin Gerai',
+                'Inventory Auditor',
+                // 'Petugas Gudang',
+                // 'Viewer',
             ])) {
                 Auth::logout();
 

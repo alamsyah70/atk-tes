@@ -1672,10 +1672,10 @@ body {
     .empty { text-align: center; color: var(--muted); padding: 28px; }
     .footer { text-align: center; color: #9aa7b9; font-size: 10px; margin-top: 22px; }
     .mobile-menu { display: none; }
-    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(9,27,54,.45); z-index: 10; align-items: center; justify-content: center; padding: 15px; }
-    .modal-backdrop.show { display: flex; }
-    .modal { background: #fff; border-radius: 16px; padding: 22px; width: min(420px, 100%); box-shadow: 0 20px 60px rgba(0,0,0,.2); }
-    .modal h3 { margin: 0 0 16px; color: var(--navy); }
+    /* .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(9,27,54,.45); z-index: 10; align-items: center; justify-content: center; padding: 15px; } */
+    /* .modal-backdrop.show { display: flex; } */
+    /* .modal { background: #fff; border-radius: 16px; padding: 22px; width: min(420px, 100%); box-shadow: 0 20px 60px rgba(0,0,0,.2); } */
+    /* .modal h3 { margin: 0 0 16px; color: var(--navy); } */
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
     .form-group input, .form-group select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; outline: none; font-size: 12px; }

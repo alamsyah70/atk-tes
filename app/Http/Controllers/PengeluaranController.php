@@ -20,9 +20,10 @@ class PengeluaranController extends Controller
 
     private function isGlobalUser(): bool
     {
-        return Auth::user()->hasAnyRole([
+        return auth()->user()->hasAnyRole([
             'Super Admin',
             'Admin Pusat',
+            'IT Cabang',
         ]);
     }
 

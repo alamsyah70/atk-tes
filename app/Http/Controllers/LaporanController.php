@@ -14,6 +14,7 @@ class LaporanController extends Controller
         return auth()->user()->hasAnyRole([
             'Super Admin',
             'Admin Pusat',
+            'IT Cabang',
         ]);
     }
 

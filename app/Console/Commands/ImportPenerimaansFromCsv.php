@@ -100,7 +100,7 @@ class ImportPenerimaansFromCsv extends Command
             'kode_supplier' => [
                 'supplier_i',
                 'kode_supplier',
-                'kode_sup',
+                'kode_suppl',
                 'sup',
                 'kd_supplier',
                 'kd_sup',

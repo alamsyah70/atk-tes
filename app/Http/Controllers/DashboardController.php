@@ -11,6 +11,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Barang;
 use Illuminate\Validation\ValidationException;
+use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
@@ -30,6 +31,7 @@ class DashboardController extends Controller
         return auth()->user()->hasAnyRole([
             'Super Admin',
             'Admin Pusat',
+            'IT Cabang',
         ]);
     }
 
@@ -97,249 +99,388 @@ class DashboardController extends Controller
     // ==========================================
 
     
-    public function index(Request $request)
-    {
-        // ==========================================
-        // 1. INFORMASI USER DAN FILTER
-        // ==========================================
+    
+public function index(Request $request)
+{
+    $user = auth()->user();
 
-        $search = trim($request->input('search', ''));
-        $status = $request->input('status', '');
+    // Super Admin dan Admin Pusat melihat seluruh cabang.
+    $isGlobal = $this->isGlobalUser();
+    $branchId = $user->branch_id;
 
-        $isGlobal = $this->isGlobalUser();
-        $branchId = auth()->user()->branch_id;
+    // User cabang wajib memiliki branch_id.
+    if (!$isGlobal && !$branchId) {
+        abort(403, 'User belum memiliki cabang.');
+    }
 
-        if (!$isGlobal) {
-            abort_if(!$branchId, 403, 'User belum memiliki cabang.');
-        }
+    $search = trim($request->input('search', ''));
+    $status = $request->input('status', '');
 
-        // ==========================================
-        // 2. REKAP BARANG MASUK
-        // ==========================================
+    /*
+    |--------------------------------------------------------------------------
+    | SUBQUERY STOK MASUK
+    |--------------------------------------------------------------------------
+    */
+    $stokMasuk = DB::table('detail_penerimaans as dp')
+        ->join('penerimaans as p', 'p.id', '=', 'dp.penerimaan_id')
+        ->select(
+            'p.branch_id',
+            'dp.kode_barang'
+        )
+        ->selectRaw('SUM(dp.qty) as total_masuk')
+        ->groupBy('p.branch_id', 'dp.kode_barang');
 
-        $stokMasuk = DB::table('detail_penerimaans as dp')
-            ->join('penerimaans as p', 'dp.penerimaan_id', '=', 'p.id')
-            ->select('p.branch_id', 'dp.kode_barang')
-            ->selectRaw('SUM(dp.qty) as total_masuk')
-            ->groupBy('p.branch_id', 'dp.kode_barang');
+    /*
+    |--------------------------------------------------------------------------
+    | SUBQUERY STOK KELUAR
+    |--------------------------------------------------------------------------
+    */
+    $stokKeluar = DB::table('detail_pengeluarans as dk')
+        ->join('pengeluarans as pg', 'pg.id', '=', 'dk.pengeluaran_id')
+        ->select(
+            'pg.branch_id',
+            'dk.kode_barang'
+        )
+        ->selectRaw('SUM(dk.qty) as total_keluar')
+        ->groupBy('pg.branch_id', 'dk.kode_barang');
 
-        // ==========================================
-        // 3. REKAP BARANG KELUAR
-        // ==========================================
+    /*
+    |--------------------------------------------------------------------------
+    | SUBQUERY PENYESUAIAN STOK
+    |--------------------------------------------------------------------------
+    */
+    $stokPenyesuaian = DB::table('penyesuaian_stoks')
+        ->select('branch_id', 'kode_barang')
+        ->selectRaw('SUM(qty_koreksi) as total_koreksi')
+        ->groupBy('branch_id', 'kode_barang');
 
-        $stokKeluar = DB::table('detail_pengeluarans as dp')
-            ->join('pengeluarans as pg', 'dp.pengeluaran_id', '=', 'pg.id')
-            ->select('pg.branch_id', 'dp.kode_barang')
-            ->selectRaw('SUM(dp.qty) as total_keluar')
-            ->groupBy('pg.branch_id', 'dp.kode_barang');
+    /*
+    |--------------------------------------------------------------------------
+    | HARGA RATA-RATA HISTORIS
+    |--------------------------------------------------------------------------
+    */
+    $averageHistoris = DB::table('detail_penerimaans as dp')
+        ->join('penerimaans as p', 'p.id', '=', 'dp.penerimaan_id')
+        ->where('dp.qty', '>', 0)
+        ->select(
+            'p.branch_id',
+            'dp.kode_barang'
+        )
+        ->selectRaw(
+            'SUM(dp.qty * dp.harga) / NULLIF(SUM(dp.qty), 0) as average_harga'
+        )
+        ->groupBy('p.branch_id', 'dp.kode_barang');
 
-        // ==========================================
-        // 4. REKAP PENYESUAIAN STOK
-        // ==========================================
-
-        $stokPenyesuaian = DB::table('penyesuaian_stoks')
-            ->select('branch_id', 'kode_barang')
-            ->selectRaw('SUM(qty_koreksi) as total_penyesuaian')
-            ->groupBy('branch_id', 'kode_barang');
-
-        // ==========================================
-        // 5. REKAP HARGA RATA-RATA HISTORIS
-        //
-        // Digunakan sebagai fallback apabila
-        // average_perolehan master masih 0 atau NULL.
-        // ==========================================
-
-        $averageHistoris = DB::table('detail_penerimaans as dp')
-            ->join('penerimaans as p', 'dp.penerimaan_id', '=', 'p.id')
-            ->where('dp.qty', '>', 0)
-            ->select('p.branch_id', 'dp.kode_barang')
-            ->selectRaw('
-                SUM(dp.qty * dp.harga) /
-                NULLIF(SUM(dp.qty), 0) AS harga_rata_rata_historis
-            ')
-            ->groupBy('p.branch_id', 'dp.kode_barang');
-
-        // ==========================================
-        // 6. QUERY STOK DAN NILAI SALDO
-        // ==========================================
-
-        $buildStokQuery = function () use (
-            $stokMasuk,
-            $stokKeluar,
-            $stokPenyesuaian,
-            $averageHistoris,
-            $isGlobal,
-            $branchId
-        ) {
-            $query = DB::table('barangs as br')
-
-                ->leftJoinSub(clone $stokMasuk, 'masuk', function ($join) {
-                    $join->on('br.branch_id', '=', 'masuk.branch_id')
-                        ->on('br.kode_barang', '=', 'masuk.kode_barang');
-                })
-
-                ->leftJoinSub(clone $stokKeluar, 'keluar', function ($join) {
-                    $join->on('br.branch_id', '=', 'keluar.branch_id')
-                        ->on('br.kode_barang', '=', 'keluar.kode_barang');
-                })
-
-                ->leftJoinSub(clone $stokPenyesuaian, 'penyesuaian', function ($join) {
-                    $join->on('br.branch_id', '=', 'penyesuaian.branch_id')
-                        ->on('br.kode_barang', '=', 'penyesuaian.kode_barang');
-                })
-
-                ->leftJoinSub(clone $averageHistoris, 'avg_historis', function ($join) {
-                    $join->on('br.branch_id', '=', 'avg_historis.branch_id')
-                        ->on('br.kode_barang', '=', 'avg_historis.kode_barang');
-                })
-
-                ->leftJoin('branches as b', 'br.branch_id', '=', 'b.id')
-
-                ->select(
-                    'br.id',
-                    'br.branch_id',
-                    'br.kode_barang',
-                    'br.nama_barang',
-                    'br.kategori',
-                    'br.satuan',
-                    'br.lokasi',
-                    'b.nama_cabang'
+    /*
+    |--------------------------------------------------------------------------
+    | QUERY DASAR MASTER BARANG + STOK
+    |--------------------------------------------------------------------------
+    */
+    $stokDasar = DB::table('barangs as br')
+        ->leftJoinSub($stokMasuk, 'sm', function ($join) {
+            $join->on('sm.branch_id', '=', 'br.branch_id')
+                 ->on('sm.kode_barang', '=', 'br.kode_barang');
+        })
+        ->leftJoinSub($stokKeluar, 'sk', function ($join) {
+            $join->on('sk.branch_id', '=', 'br.branch_id')
+                 ->on('sk.kode_barang', '=', 'br.kode_barang');
+        })
+        ->leftJoinSub($stokPenyesuaian, 'sp', function ($join) {
+            $join->on('sp.branch_id', '=', 'br.branch_id')
+                 ->on('sp.kode_barang', '=', 'br.kode_barang');
+        })
+        ->leftJoinSub($averageHistoris, 'ah', function ($join) {
+            $join->on('ah.branch_id', '=', 'br.branch_id')
+                 ->on('ah.kode_barang', '=', 'br.kode_barang');
+        })
+        ->leftJoin('branches as b', 'b.id', '=', 'br.branch_id')
+        ->select(
+            'br.id',
+            'br.branch_id',
+            'br.kode_barang',
+            'br.nama_barang',
+            'br.kategori',
+            'br.satuan',
+            'br.lokasi',
+            'b.nama_cabang'
+        )
+        ->selectRaw(
+            '(COALESCE(sm.total_masuk, 0)
+            - COALESCE(sk.total_keluar, 0)
+            + COALESCE(sp.total_koreksi, 0)) as stok'
+        )
+        ->selectRaw(
+            'COALESCE(
+                NULLIF(br.average_perolehan, 0),
+                ah.average_harga,
+                0
+            ) as harga_rata_rata'
+        )
+        ->selectRaw(
+            '(
+                (COALESCE(sm.total_masuk, 0)
+                - COALESCE(sk.total_keluar, 0)
+                + COALESCE(sp.total_koreksi, 0))
+                *
+                COALESCE(
+                    NULLIF(br.average_perolehan, 0),
+                    ah.average_harga,
+                    0
                 )
+            ) as nilai_saldo'
+        );
 
-                // Stok akhir
-                ->selectRaw('
-                    (
-                        COALESCE(masuk.total_masuk, 0)
-                        - COALESCE(keluar.total_keluar, 0)
-                        + COALESCE(penyesuaian.total_penyesuaian, 0)
-                    ) AS stok
-                ')
+    if (!$isGlobal) {
+        $stokDasar->where('br.branch_id', $branchId);
+    }
 
-                // Harga rata-rata perolehan
-                ->selectRaw('
-                    COALESCE(
-                        NULLIF(br.average_perolehan, 0),
-                        avg_historis.harga_rata_rata_historis,
-                        0
-                    ) AS harga_rata_rata
-                ')
+    /*
+    |--------------------------------------------------------------------------
+    | QUERY STOK SIAP FILTER
+    |--------------------------------------------------------------------------
+    */
+    $stokQuery = DB::query()->fromSub($stokDasar, 'barang_stok');
 
-                // Nilai saldo akhir = stok akhir x harga rata-rata
-                ->selectRaw('
-                    (
-                        (
-                            COALESCE(masuk.total_masuk, 0)
-                            - COALESCE(keluar.total_keluar, 0)
-                            + COALESCE(penyesuaian.total_penyesuaian, 0)
-                        )
-                        *
-                        COALESCE(
-                            NULLIF(br.average_perolehan, 0),
-                            avg_historis.harga_rata_rata_historis,
-                            0
-                        )
-                    ) AS nilai_saldo
-                ');
+    /*
+    |--------------------------------------------------------------------------
+    | RINGKASAN PERSEDIAAN
+    |--------------------------------------------------------------------------
+    */
+    $totalItems = (clone $stokQuery)
+        ->where('stok', '>', 0)
+        ->count();
 
-            if (!$isGlobal) {
-                $query->where('br.branch_id', $branchId);
-            }
+    $totalStock = (clone $stokQuery)
+        ->sum('stok');
 
-            return $query;
-        };
+    $totalInventoryValue = (clone $stokQuery)
+        ->sum('nilai_saldo');
 
-        // ==========================================
-        // 7. STATISTIK DASHBOARD
-        // ==========================================
+    $lowStock = (clone $stokQuery)
+        ->whereBetween('stok', [1, 10])
+        ->count();
 
-        $totalItems = DB::query()
-            ->fromSub($buildStokQuery(), 'rekap')
-            ->where('rekap.stok', '>', 0)
-            ->count();
+    $outOfStock = (clone $stokQuery)
+        ->where('stok', '<=', 0)
+        ->count();
 
-        $totalStock = DB::query()
-            ->fromSub($buildStokQuery(), 'rekap')
-            ->sum('rekap.stok') ?? 0;
+    $totalCategories = (clone $stokQuery)
+        ->whereNotNull('kategori')
+        ->where('kategori', '!=', '')
+        ->distinct()
+        ->count('kategori');
 
-        $lowStock = DB::query()
-            ->fromSub($buildStokQuery(), 'rekap')
-            ->whereBetween('rekap.stok', [1, 10])
-            ->count();
+    /*
+    |--------------------------------------------------------------------------
+    | PERIODE BULAN INI
+    |--------------------------------------------------------------------------
+    */
+    $awalBulan = Carbon::now()->startOfMonth()->toDateString();
+    $akhirBulan = Carbon::now()->endOfMonth()->toDateString();
 
-        // Total nilai saldo seluruh barang
-        $totalInventoryValue = DB::query()
-            ->fromSub($buildStokQuery(), 'rekap')
-            ->sum('rekap.nilai_saldo') ?? 0;
+    $penerimaanBulanIni = DB::table('detail_penerimaans as dp')
+        ->join('penerimaans as p', 'p.id', '=', 'dp.penerimaan_id')
+        ->whereBetween('p.tanggal', [$awalBulan, $akhirBulan]);
 
-        // ==========================================
-        // 8. TOTAL KATEGORI
-        // ==========================================
+    $pengeluaranBulanIni = DB::table('detail_pengeluarans as dk')
+        ->join('pengeluarans as pg', 'pg.id', '=', 'dk.pengeluaran_id')
+        ->whereBetween('pg.tanggal', [$awalBulan, $akhirBulan]);
 
-        $kategoriQuery = DB::table('barangs')
-            ->whereNotNull('kategori')
-            ->where('kategori', '<>', '');
+    if (!$isGlobal) {
+        $penerimaanBulanIni->where('p.branch_id', $branchId);
+        $pengeluaranBulanIni->where('pg.branch_id', $branchId);
+    }
 
-        if (!$isGlobal) {
-            $kategoriQuery->where('branch_id', $branchId);
-        }
+    $totalMasukBulanIni = (clone $penerimaanBulanIni)->sum('dp.qty');
+    $totalKeluarBulanIni = (clone $pengeluaranBulanIni)->sum('dk.qty');
 
-        $totalCategories = $kategoriQuery
-            ->distinct()
-            ->count('kategori');
+    /*
+    |--------------------------------------------------------------------------
+    | GRAFIK BARANG MASUK DAN KELUAR 6 BULAN TERAKHIR
+    |--------------------------------------------------------------------------
+    */
+    $tanggalMulaiGrafik = Carbon::now()
+        ->subMonths(5)
+        ->startOfMonth();
 
-        // ==========================================
-        // 9. DAFTAR BARANG
-        // ==========================================
+    $masukGrafikQuery = DB::table('detail_penerimaans as dp')
+        ->join('penerimaans as p', 'p.id', '=', 'dp.penerimaan_id')
+        ->where('p.tanggal', '>=', $tanggalMulaiGrafik->toDateString())
+        ->selectRaw("DATE_FORMAT(p.tanggal, '%Y-%m') as periode")
+        ->selectRaw('SUM(dp.qty) as total')
+        ->groupBy('periode');
 
-        $queryBarang = DB::query()
-            ->fromSub($buildStokQuery(), 'rekap');
+    $keluarGrafikQuery = DB::table('detail_pengeluarans as dk')
+        ->join('pengeluarans as pg', 'pg.id', '=', 'dk.pengeluaran_id')
+        ->where('pg.tanggal', '>=', $tanggalMulaiGrafik->toDateString())
+        ->selectRaw("DATE_FORMAT(pg.tanggal, '%Y-%m') as periode")
+        ->selectRaw('SUM(dk.qty) as total')
+        ->groupBy('periode');
 
-        if ($search !== '') {
-            $queryBarang->where(function ($q) use ($search) {
-                $q->where('rekap.kode_barang', 'like', "%{$search}%")
-                    ->orWhere('rekap.nama_barang', 'like', "%{$search}%")
-                    ->orWhere('rekap.kategori', 'like', "%{$search}%")
-                    ->orWhere('rekap.nama_cabang', 'like', "%{$search}%")
-                    ->orWhere('rekap.lokasi', 'like', "%{$search}%");
-            });
-        }
+    if (!$isGlobal) {
+        $masukGrafikQuery->where('p.branch_id', $branchId);
+        $keluarGrafikQuery->where('pg.branch_id', $branchId);
+    }
 
-        // ==========================================
-        // 10. FILTER STATUS
-        // ==========================================
+    $dataMasukGrafik = $masukGrafikQuery->pluck('total', 'periode');
+    $dataKeluarGrafik = $keluarGrafikQuery->pluck('total', 'periode');
 
-        if ($status === 'tersedia') {
-            $queryBarang->where('rekap.stok', '>', 10);
-        } elseif ($status === 'menipis') {
-            $queryBarang->whereBetween('rekap.stok', [1, 10]);
-        } elseif ($status === 'habis') {
-            $queryBarang->where('rekap.stok', '<=', 0);
-        }
+    $grafikBulanan = collect();
 
-        // ==========================================
-        // 11. PAGINATION
-        // ==========================================
+    for ($i = 0; $i < 6; $i++) {
+        $bulan = Carbon::now()->subMonths(5 - $i);
+        $periode = $bulan->format('Y-m');
 
-        $barang = $queryBarang
-            ->orderBy('rekap.nama_barang')
-            ->paginate(10)
-            ->withQueryString();
-
-        // ==========================================
-        // 12. TAMPILKAN DASHBOARD
-        // ==========================================
-
-        return view('dashboard.index', [
-            'title' => 'Dashboard',
-            'totalItems' => $totalItems,
-            'totalStock' => $totalStock,
-            'lowStock' => $lowStock,
-            'totalCategories' => $totalCategories,
-            'totalInventoryValue' => $totalInventoryValue,
-            'barang' => $barang,
-            'search' => $search,
+        $grafikBulanan->push([
+            'label' => $bulan->translatedFormat('M Y'),
+            'masuk' => (float) ($dataMasukGrafik[$periode] ?? 0),
+            'keluar' => (float) ($dataKeluarGrafik[$periode] ?? 0),
         ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | BARANG PALING BANYAK KELUAR
+    |--------------------------------------------------------------------------
+    */
+    $topBarangKeluarQuery = DB::table('detail_pengeluarans as dk')
+        ->join('pengeluarans as pg', 'pg.id', '=', 'dk.pengeluaran_id')
+        ->select(
+            'dk.kode_barang',
+            'dk.nama_barang'
+        )
+        ->selectRaw('SUM(dk.qty) as total_keluar')
+        ->groupBy('dk.kode_barang', 'dk.nama_barang')
+        ->orderByDesc('total_keluar')
+        ->limit(5);
+
+    if (!$isGlobal) {
+        $topBarangKeluarQuery->where('pg.branch_id', $branchId);
+    }
+
+    $topBarangKeluar = $topBarangKeluarQuery->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | DAFTAR STOK MENIPIS DAN HABIS
+    |--------------------------------------------------------------------------
+    */
+    $peringatanStok = (clone $stokQuery)
+        ->where('stok', '<=', 10)
+        ->orderBy('stok')
+        ->limit(8)
+        ->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | PENERIMAAN TERBARU
+    |--------------------------------------------------------------------------
+    */
+    $recentPenerimaanQuery = DB::table('penerimaans as p')
+        ->leftJoin('suppliers as s', 's.id', '=', 'p.supplier_id')
+        ->leftJoin('branches as b', 'b.id', '=', 'p.branch_id')
+        ->select(
+            'p.id',
+            'p.nomor_penerimaan',
+            'p.tanggal',
+            's.nama_supplier',
+            'b.nama_cabang'
+        )
+        ->orderByDesc('p.tanggal')
+        ->orderByDesc('p.id')
+        ->limit(5);
+
+    if (!$isGlobal) {
+        $recentPenerimaanQuery->where('p.branch_id', $branchId);
+    }
+
+    $recentPenerimaan = $recentPenerimaanQuery->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | PENGELUARAN TERBARU
+    |--------------------------------------------------------------------------
+    */
+    $recentPengeluaranQuery = DB::table('pengeluarans as pg')
+        ->leftJoin('branches as b', 'b.id', '=', 'pg.branch_id')
+        ->select(
+            'pg.id',
+            'pg.nomor_pengeluaran',
+            'pg.tanggal',
+            'pg.divisi',
+            'pg.nama_pengambil',
+            'b.nama_cabang'
+        )
+        ->orderByDesc('pg.tanggal')
+        ->orderByDesc('pg.id')
+        ->limit(5);
+
+    if (!$isGlobal) {
+        $recentPengeluaranQuery->where('pg.branch_id', $branchId);
+    }
+
+    $recentPengeluaran = $recentPengeluaranQuery->get();
+
+    /*
+    |--------------------------------------------------------------------------
+    | DAFTAR BARANG DENGAN PENCARIAN DAN FILTER STATUS
+    |--------------------------------------------------------------------------
+    */
+    $barangQuery = clone $stokQuery;
+
+    if ($search !== '') {
+        $barangQuery->where(function ($query) use ($search) {
+            $query->where('kode_barang', 'like', "%{$search}%")
+                ->orWhere('nama_barang', 'like', "%{$search}%")
+                ->orWhere('kategori', 'like', "%{$search}%")
+                ->orWhere('nama_cabang', 'like', "%{$search}%")
+                ->orWhere('lokasi', 'like', "%{$search}%");
+        });
+    }
+
+    if ($status === 'tersedia') {
+        $barangQuery->where('stok', '>', 10);
+    } elseif ($status === 'menipis') {
+        $barangQuery->whereBetween('stok', [1, 10]);
+    } elseif ($status === 'habis') {
+        $barangQuery->where('stok', '<=', 0);
+    }
+
+    $barang = $barangQuery
+        ->orderBy('nama_barang')
+        ->paginate(10)
+        ->withQueryString();
+
+    return view('dashboard.index', [
+        'title' => 'Dashboard',
+        'isGlobal' => $isGlobal,
+
+        // Ringkasan
+        'totalItems' => $totalItems,
+        'totalStock' => $totalStock,
+        'totalInventoryValue' => $totalInventoryValue,
+        'totalCategories' => $totalCategories,
+        'lowStock' => $lowStock,
+        'outOfStock' => $outOfStock,
+
+        // Aktivitas
+        'totalMasukBulanIni' => $totalMasukBulanIni,
+        'totalKeluarBulanIni' => $totalKeluarBulanIni,
+        'grafikBulanan' => $grafikBulanan,
+        'topBarangKeluar' => $topBarangKeluar,
+
+        // Daftar aktivitas
+        'peringatanStok' => $peringatanStok,
+        'recentPenerimaan' => $recentPenerimaan,
+        'recentPengeluaran' => $recentPengeluaran,
+
+        // Tabel barang
+        'barang' => $barang,
+        'search' => $search,
+        'status' => $status,
+    ]);
+}
+
 
 
     // ==========================================

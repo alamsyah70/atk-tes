@@ -626,6 +626,8 @@
         </ul>
     </div>
 @endif
+
+@can('pengeluaran.create')
 <form action="{{ route('databarang.penerimaan.store') }}"
       method="POST"
       enctype="multipart/form-data"
@@ -750,6 +752,7 @@
         </div>
 
         </form>
+@endcan
 
         {{-- RIWAYAT PENERIMAAN BARANG --}}
         <div class="receipt-card">
@@ -961,8 +964,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 <script>
-    
     const receiptRows = document.getElementById('receiptRows');
     const addRowBtn = document.getElementById('addRow');
 
@@ -973,9 +976,25 @@
         return 'Rp ' + Number(value || 0).toLocaleString('id-ID');
     }
 
-    // Tambah baris barang
     // URL pencarian Master Barang
     const barangSearchUrl = @json(route('barangs.search'));
+
+    // Mengatur tombol hapus: minimal harus ada satu baris
+    function updateTombolHapus() {
+        const rows = receiptRows.querySelectorAll('tr');
+        const tombolHapus = receiptRows.querySelectorAll('.row-delete');
+
+        tombolHapus.forEach(function(button) {
+            const hanyaSatuBaris = rows.length <= 1;
+
+            button.disabled = hanyaSatuBaris;
+            button.style.opacity = hanyaSatuBaris ? '0.35' : '1';
+            button.style.cursor = hanyaSatuBaris ? 'not-allowed' : 'pointer';
+            button.title = hanyaSatuBaris
+                ? 'Minimal harus ada satu baris barang'
+                : 'Hapus baris';
+        });
+    }
 
     // Tambah baris barang
     function addReceiptRow() {
@@ -999,7 +1018,6 @@
                     <div class="barang-suggestions"></div>
                 </div>
 
-                {{-- Data yang dikirim ke controller --}}
                 <input type="hidden" name="barang_id[]" class="barang-id">
                 <input type="hidden" name="kode_barang[]" class="kode-barang">
                 <input type="hidden" name="nama_barang[]" class="nama-barang">
@@ -1044,6 +1062,7 @@
         aktifkanAutocomplete(tr);
 
         updateReceipt();
+        updateTombolHapus();
     }
 
     // Hitung jumlah per baris dan total
@@ -1077,53 +1096,67 @@
             rupiah(total);
 
         document.getElementById('totalInput').value = total;
+
+        updateTombolHapus();
     }
 
     // Event tambah barang
     addRowBtn.addEventListener('click', addReceiptRow);
 
-    // Event hitung otomatis dan hapus baris
+    // Event hitung otomatis
     receiptRows.addEventListener('input', function(e) {
-        if (e.target.classList.contains('qty') ||
-            e.target.classList.contains('harga')) {
+        if (
+            e.target.classList.contains('qty') ||
+            e.target.classList.contains('harga')
+        ) {
             updateReceipt();
         }
     });
 
+    // Event hapus baris
     receiptRows.addEventListener('click', function(e) {
         if (e.target.classList.contains('row-delete')) {
+
+            const rows = receiptRows.querySelectorAll('tr');
+
+            // Jangan izinkan menghapus jika hanya tersisa satu baris
+            if (rows.length <= 1) {
+                updateTombolHapus();
+                return;
+            }
+
             e.target.closest('tr').remove();
+
             updateReceipt();
+            updateTombolHapus();
         }
     });
 
     // Validasi sebelum disimpan
     document.getElementById('receiptForm').addEventListener('submit', function(e) {
 
-    if (receiptRows.children.length === 0) {
-        e.preventDefault();
-        alert('Tambahkan minimal satu barang penerimaan!');
-        return;
-    }
+        const rows = receiptRows.querySelectorAll('tr');
 
-    const rows = receiptRows.querySelectorAll('tr');
-
-    for (const row of rows) {
-
-        const barangId = row.querySelector('.barang-id').value;
-
-        if (!barangId) {
+        if (rows.length === 0) {
             e.preventDefault();
-
-            alert('Pilih barang dari Master Barang terlebih dahulu!');
-
-            row.querySelector('.barang-search').focus();
-
+            alert('Tambahkan minimal satu barang penerimaan!');
+            addReceiptRow();
             return;
         }
 
-    }
+        for (const row of rows) {
+            const barangId = row.querySelector('.barang-id').value;
 
+            if (!barangId) {
+                e.preventDefault();
+
+                alert('Pilih barang dari Master Barang terlebih dahulu!');
+
+                row.querySelector('.barang-search').focus();
+
+                return;
+            }
+        }
     });
 
     // Baris pertama otomatis
@@ -1132,168 +1165,153 @@
     // Aktifkan autocomplete Master Barang
     function aktifkanAutocomplete(row) {
 
-    const wrapper = row.querySelector('.barang-autocomplete');
-    const input = row.querySelector('.barang-search');
-    const suggestionBox = row.querySelector('.barang-suggestions');
+        const input = row.querySelector('.barang-search');
+        const suggestionBox = row.querySelector('.barang-suggestions');
 
-    let timer = null;
+        let timer = null;
 
-    // Pindahkan daftar saran ke body agar tidak terpotong tabel
-    document.body.appendChild(suggestionBox);
+        // Pindahkan daftar saran ke body agar tidak terpotong tabel
+        document.body.appendChild(suggestionBox);
 
-    // Atur posisi daftar saran tepat di bawah input
-    function posisiSuggestion() {
+        // Atur posisi daftar saran tepat di bawah input
+        function posisiSuggestion() {
 
-        if (suggestionBox.style.display === 'none') return;
+            if (suggestionBox.style.display === 'none') return;
 
-        const rect = input.getBoundingClientRect();
+            const rect = input.getBoundingClientRect();
 
-        suggestionBox.style.left = Math.max(
-            10,
-            Math.min(rect.left, window.innerWidth - suggestionBox.offsetWidth - 10)
-        ) + 'px';
+            suggestionBox.style.left = Math.max(
+                10,
+                Math.min(rect.left, window.innerWidth - suggestionBox.offsetWidth - 10)
+            ) + 'px';
 
-        suggestionBox.style.top = (rect.bottom + 4) + 'px';
-        suggestionBox.style.width = Math.max(rect.width, 280) + 'px';
-    }
-
-    input.addEventListener('input', function () {
-
-        const keyword = this.value.trim();
-
-        // Hapus identitas barang sebelumnya
-        row.querySelector('.barang-id').value = '';
-        row.querySelector('.kode-barang').value = '';
-        row.querySelector('.nama-barang').value = '';
-        row.querySelector('.kategori-barang').value = '';
-        row.querySelector('.satuan-barang').value = '';
-        row.querySelector('.lokasi-barang').value = '';
-
-        clearTimeout(timer);
-
-        if (keyword.length < 1) {
-            suggestionBox.style.display = 'none';
-            return;
+            suggestionBox.style.top = (rect.bottom + 4) + 'px';
+            suggestionBox.style.width = Math.max(rect.width, 280) + 'px';
         }
 
-        timer = setTimeout(async function () {
+        input.addEventListener('input', function() {
 
-            try {
+            const keyword = this.value.trim();
 
-                const response = await fetch(
-                    barangSearchUrl + '?q=' + encodeURIComponent(keyword),
-                    {
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    }
-                );
+            // Hapus identitas barang sebelumnya
+            row.querySelector('.barang-id').value = '';
+            row.querySelector('.kode-barang').value = '';
+            row.querySelector('.nama-barang').value = '';
+            row.querySelector('.kategori-barang').value = '';
+            row.querySelector('.satuan-barang').value = '';
+            row.querySelector('.lokasi-barang').value = '';
 
-                if (!response.ok) {
-                    throw new Error('Gagal mengambil data barang.');
-                }
+            clearTimeout(timer);
 
-                const barangs = await response.json();
-
-                // Pastikan hasil masih sesuai dengan teks terakhir
-                if (input.value.trim() !== keyword) return;
-
-                suggestionBox.innerHTML = '';
-
-                if (barangs.length === 0) {
-
-                    const empty = document.createElement('div');
-                    empty.className = 'barang-suggestion-empty';
-                    empty.textContent = 'Barang tidak ditemukan di Master Barang';
-
-                    suggestionBox.appendChild(empty);
-
-                } else {
-
-                    barangs.forEach(function (barang) {
-
-                        const item = document.createElement('div');
-                        item.className = 'barang-suggestion-item';
-
-                        const title = document.createElement('strong');
-                        title.textContent =
-                            barang.kode_barang + ' - ' + barang.nama_barang;
-
-                        const detail = document.createElement('small');
-                        detail.textContent =
-                            'Kategori: ' + (barang.kategori || '-') +
-                            ' | Satuan: ' + (barang.satuan || '-') +
-                            ' | Lokasi: ' + (barang.lokasi || '-');
-
-                        item.appendChild(title);
-                        item.appendChild(detail);
-
-                        item.addEventListener('click', function () {
-
-                            pilihBarang(row, barang);
-
-                            suggestionBox.style.display = 'none';
-
-                        });
-
-                        suggestionBox.appendChild(item);
-
-                    });
-
-                }
-
-                suggestionBox.style.display = 'block';
-                posisiSuggestion();
-
-            } catch (error) {
-
-                console.error(error);
+            if (keyword.length < 1) {
                 suggestionBox.style.display = 'none';
-
+                return;
             }
 
-        }, 250);
+            timer = setTimeout(async function() {
 
-    });
+                try {
+                    const response = await fetch(
+                        barangSearchUrl + '?q=' + encodeURIComponent(keyword),
+                        {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        }
+                    );
 
-    // Posisi ulang saat halaman atau tabel digulir
-    window.addEventListener('scroll', posisiSuggestion, true);
-    window.addEventListener('resize', posisiSuggestion);
+                    if (!response.ok) {
+                        throw new Error('Gagal mengambil data barang.');
+                    }
+
+                    const barangs = await response.json();
+
+                    // Pastikan hasil masih sesuai dengan teks terakhir
+                    if (input.value.trim() !== keyword) return;
+
+                    suggestionBox.innerHTML = '';
+
+                    if (barangs.length === 0) {
+
+                        const empty = document.createElement('div');
+                        empty.className = 'barang-suggestion-empty';
+                        empty.textContent = 'Barang tidak ditemukan di Master Barang';
+
+                        suggestionBox.appendChild(empty);
+
+                    } else {
+
+                        barangs.forEach(function(barang) {
+
+                            const item = document.createElement('div');
+                            item.className = 'barang-suggestion-item';
+
+                            const title = document.createElement('strong');
+                            title.textContent =
+                                barang.kode_barang + ' - ' + barang.nama_barang;
+
+                            const detail = document.createElement('small');
+                            detail.textContent =
+                                'Kategori: ' + (barang.kategori || '-') +
+                                ' | Satuan: ' + (barang.satuan || '-') +
+                                ' | Lokasi: ' + (barang.lokasi || '-');
+
+                            item.appendChild(title);
+                            item.appendChild(detail);
+
+                            item.addEventListener('click', function() {
+                                pilihBarang(row, barang);
+                                suggestionBox.style.display = 'none';
+                            });
+
+                            suggestionBox.appendChild(item);
+                        });
+                    }
+
+                    suggestionBox.style.display = 'block';
+                    posisiSuggestion();
+
+                } catch (error) {
+                    console.error(error);
+                    suggestionBox.style.display = 'none';
+                }
+
+            }, 250);
+        });
+
+        // Posisi ulang saat halaman atau tabel digulir
+        window.addEventListener('scroll', posisiSuggestion, true);
+        window.addEventListener('resize', posisiSuggestion);
     }
 
     // Mengisi data setelah barang dipilih
     function pilihBarang(row, barang) {
 
-    // Tampilan kolom pilihan barang
-    row.querySelector('.barang-search').value =
-        barang.kode_barang + ' - ' + barang.nama_barang;
+        row.querySelector('.barang-search').value =
+            barang.kode_barang + ' - ' + barang.nama_barang;
 
-    // Identitas utama Master Barang
-    row.querySelector('.barang-id').value = barang.id;
+        row.querySelector('.barang-id').value = barang.id;
 
-    // Snapshot data Master Barang
-    row.querySelector('.kode-barang').value = barang.kode_barang;
-    row.querySelector('.nama-barang').value = barang.nama_barang;
-    row.querySelector('.kategori-barang').value = barang.kategori || '';
-    row.querySelector('.satuan-barang').value = barang.satuan || '';
-    row.querySelector('.lokasi-barang').value = barang.lokasi || '';
+        row.querySelector('.kode-barang').value = barang.kode_barang;
+        row.querySelector('.nama-barang').value = barang.nama_barang;
+        row.querySelector('.kategori-barang').value = barang.kategori || '';
+        row.querySelector('.satuan-barang').value = barang.satuan || '';
+        row.querySelector('.lokasi-barang').value = barang.lokasi || '';
     }
 
     // Tutup saran jika pengguna mengklik di luar kolom
-    document.addEventListener('click', function (event) {
+    document.addEventListener('click', function(event) {
 
-    document.querySelectorAll('.barang-suggestions').forEach(function (box) {
+        document.querySelectorAll('.barang-suggestions').forEach(function(box) {
 
-        if (!box.contains(event.target)) {
-            box.style.display = 'none';
-        }
-
+            if (!box.contains(event.target)) {
+                box.style.display = 'none';
+            }
+        });
     });
-
-    });
-
 </script>
+
 @push('scripts')
 <script src="{{ asset('js/penerimaan.js') }}"></script>
 @endpush
