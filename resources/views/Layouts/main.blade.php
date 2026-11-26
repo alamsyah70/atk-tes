@@ -17,6 +17,87 @@
     >
 
     <style>
+        /* GLOBAL LOADING - FIXED DI TENGAH LAYAR */
+        #pageLoading {
+            position: fixed !important;
+
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+
+            width: 100vw !important;
+            height: 100vh !important;
+
+            z-index: 2147483647 !important;
+
+            display: none;
+            align-items: center !important;
+            justify-content: center !important;
+
+            background: transparent !important;
+            margin: 0 !important;
+            padding: 0 !important;
+
+            transform: none !important;
+        }
+
+        #pageLoading.active {
+            display: flex !important;
+        }
+
+        #pageLoading .page-loading-content {
+            position: relative !important;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+
+            width: auto !important;
+            height: auto !important;
+
+            margin: 0 !important;
+            padding: 20px !important;
+
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+
+            transform: none !important;
+        }
+
+        #pageLoading .page-loading-spinner {
+            width: 45px;
+            height: 45px;
+
+            margin: 0 auto 14px;
+
+            border: 4px solid rgba(71, 120, 185, .20);
+            border-top-color: #4778b9;
+            border-radius: 50%;
+
+            animation: pageLoadingSpin .8s linear infinite;
+        }
+
+        #pageLoading .page-loading-title {
+            text-align: center;
+            color: #31577f;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        #pageLoading .page-loading-description {
+            text-align: center;
+            color: #718096;
+            font-size: 11px;
+        }
+
+        @keyframes pageLoadingSpin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
         /* =========================================
            GLOBAL SIDEBAR
         ========================================= */
@@ -396,11 +477,11 @@
                 <strong>APLIKASI ATK MDI</strong>
 
                 <small>
-                    {{ auth()->user()->user ?? 'Guest' }}
+                    Login As {{ auth()->user()->user ?? 'Guest' }}
                 </small>
 
                 <small class="user-role">
-                    {{ auth()->user()->getRoleNames()->first() ?? 'Tanpa Role' }}
+                    {{ auth()->user()->getRoleNames()->first() ?? 'Tanpa Role' }} - {{ auth()->user()->branch?->nama_cabang ?? 'Semua Cabang / Pusat' }}
                 </small>
 
             </div>
@@ -780,7 +861,18 @@
 
 
     </main>
+<!-- GLOBAL PAGE LOADING -->
+<div class="page-loading" id="pageLoading">
+    <div class="page-loading-content">
 
+        <div class="page-loading-spinner"></div>
+
+        <div class="page-loading-title">
+            Memproses...
+        </div>
+
+    </div>
+</div>
 </div>
 
 
@@ -931,6 +1023,165 @@ document.addEventListener('DOMContentLoaded', function () {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 @stack('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
 
+    const loading = document.getElementById('pageLoading');
+
+    if (!loading) return;
+
+    let isNavigating = false;
+
+    function showLoading(message = 'Memproses...') {
+        if (isNavigating) return;
+
+        isNavigating = true;
+
+        const title = loading.querySelector('.page-loading-title');
+
+        if (title) {
+            title.textContent = message;
+        }
+
+        loading.classList.add('active');
+    }
+
+    function hideLoading() {
+        isNavigating = false;
+        loading.classList.remove('active');
+    }
+
+    // =================================
+    // 1. KLIK LINK / NAVIGASI HALAMAN
+    // =================================
+
+    document.addEventListener('click', function (event) {
+
+        const link = event.target.closest('a');
+
+        if (!link) return;
+
+        // Abaikan link yang bukan navigasi halaman
+        if (
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey ||
+            event.metaKey ||
+            link.target === '_blank' ||
+            link.hasAttribute('download') ||
+            link.dataset.noLoading !== undefined
+        ) {
+            return;
+        }
+
+        const href = link.getAttribute('href');
+
+        if (
+            !href ||
+            href === '#' ||
+            href.startsWith('#') ||
+            href.startsWith('javascript:') ||
+            href.startsWith('mailto:') ||
+            href.startsWith('tel:')
+        ) {
+            return;
+        }
+
+        const tujuan = new URL(link.href, window.location.href);
+
+        // Abaikan link ke domain lain
+        if (tujuan.origin !== window.location.origin) {
+            return;
+        }
+
+        // Abaikan link ke halaman yang sama
+        if (
+            tujuan.pathname === window.location.pathname &&
+            tujuan.search === window.location.search &&
+            tujuan.hash !== ''
+        ) {
+            return;
+        }
+
+        if (isNavigating) {
+            event.preventDefault();
+            return;
+        }
+
+        showLoading('Membuka halaman...');
+
+    });
+
+
+    // =================================
+    // 2. SUBMIT FORM
+    // =================================
+
+    document.addEventListener('submit', function (event) {
+
+        const form = event.target;
+
+        if (!(form instanceof HTMLFormElement)) return;
+
+        // Form yang dikecualikan
+        if (
+            form.dataset.noLoading !== undefined ||
+            form.target === '_blank'
+        ) {
+            return;
+        }
+
+        // Form AJAX tidak perlu loading navigasi
+        if (
+            form.dataset.ajax !== undefined
+        ) {
+            return;
+        }
+
+        if (isNavigating) {
+            event.preventDefault();
+            return;
+        }
+
+        const submitButton = event.submitter;
+
+        if (submitButton) {
+            submitButton.disabled = true;
+
+            if (submitButton.tagName === 'BUTTON') {
+                submitButton.dataset.originalHtml =
+                    submitButton.innerHTML;
+
+                submitButton.innerHTML =
+                    '<span class="spinner-border spinner-border-sm me-2"></span>Memproses...';
+            }
+        }
+
+        showLoading('Menyimpan data...');
+
+    });
+
+
+    // =================================
+    // 3. BROWSER BACK / FORWARD
+    // =================================
+
+    window.addEventListener('pageshow', function () {
+        hideLoading();
+    });
+
+    // =================================
+    // 4. RESET JIKA NAVIGASI GAGAL
+    // =================================
+
+    window.addEventListener('pagehide', function () {
+        // Browser sedang meninggalkan halaman.
+        // Tidak perlu menyembunyikan overlay.
+    });
+
+});
+</script>
 </body>
 </html>

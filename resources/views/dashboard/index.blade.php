@@ -139,10 +139,13 @@
 
             <div class="bar-chart">
                 @foreach ($grafikBulanan as $data)
-                    @php
-                        $tinggiMasuk = ($data['masuk'] / $maksGrafik) * 100;
-                        $tinggiKeluar = ($data['keluar'] / $maksGrafik) * 100;
-                    @endphp
+                @php
+                    $masuk = (float) ($data['masuk'] ?? 0);
+                    $keluar = (float) ($data['keluar'] ?? 0);
+
+                    $tinggiMasuk = ($masuk / $maksGrafik) * 100;
+                    $tinggiKeluar = ($keluar / $maksGrafik) * 100;
+                @endphp
 
                     <div class="chart-column">
                         <div class="chart-bars">
@@ -355,12 +358,14 @@
                 <h5>Daftar Persediaan Barang</h5>
                 <p>Pencarian dan pemantauan stok barang</p>
             </div>
-            @can('superadmin')
-            <a href="{{ url('/databarang/barang') }}" class="btn-dashboard">
-                <i class="bi bi-box-seam"></i>
-                Kelola Barang
-            </a>
-            @endcan
+            @hasanyrole('Super Admin|Admin Pusat|IT Cabang')
+                @can('barang.view')
+                    <a href="{{ url('/databarang/kelola-barang') }}" class="btn-dashboard">
+                        <i class="bi bi-box-seam"></i>
+                        Kelola Barang
+                    </a>
+                @endcan
+            @endhasanyrole
         </div>
 
         <form method="GET" action="{{ url('/dashboard') }}" class="filter-form">
@@ -471,7 +476,7 @@
                 dari {{ $barang->total() }} barang
             </div>
 
-            {{ $barang->onEachSide(1)->links('pagination::bootstrap-5') }}
+            {{ $barang->onEachSide(1)->withQueryString()->links('pagination::bootstrap-5') }}
         </div>
 
     </div>

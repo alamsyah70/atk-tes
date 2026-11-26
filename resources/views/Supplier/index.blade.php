@@ -758,6 +758,10 @@
                                     </div>
                                 @endif
 
+                                <input type="hidden"
+                                    name="kode_supplier"
+                                    value="{{ $supplier->kode_supplier }}">
+
                                 <div class="mb-3">
 
                                     <label class="form-label">
@@ -765,12 +769,14 @@
                                     </label>
 
                                     <input type="text"
-                                        name="kode_supplier"
-                                        class="form-control"
+                                        class="form-control bg-light"
                                         value="{{ $supplier->kode_supplier }}"
-                                        maxlength="50"
-                                        oninput="this.value=this.value.toUpperCase()"
-                                        required>
+                                        readonly
+                                        disabled>
+
+                                        <small class="text-muted">
+                                        Kode supplier tidak dapat diubah setelah master supplier dibuat.
+                                    </small>
 
                                 </div>
 

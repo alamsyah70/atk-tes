@@ -7,6 +7,72 @@
     <title>Login - ATK MDI</title>
 
     <style>
+        /* ===== LOGIN LOADING OVERLAY ===== */
+        .login-loading {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+
+            /* Background transparan */
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
+        .login-loading.active {
+            display: flex;
+        }
+
+        .login-loading-card {
+            width: 230px;
+            padding: 28px 22px;
+            background: #fff;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 15px 45px rgba(0, 0, 0, .15);
+            animation: loadingAppear .25s ease;
+        }
+
+        .login-spinner {
+            width: 45px;
+            height: 45px;
+            margin: 0 auto 17px;
+            border: 4px solid #e5edf7;
+            border-top-color: #4778b9;
+            border-radius: 50%;
+            animation: loginSpin .8s linear infinite;
+        }
+
+        .login-loading-card h6 {
+            margin: 0 0 6px;
+            color: #294568;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .login-loading-card p {
+            margin: 0;
+            color: #8997a9;
+            font-size: 11px;
+        }
+
+        @keyframes loginSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes loadingAppear {
+            from {
+                opacity: 0;
+                transform: translateY(8px) scale(.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
         * {
             margin: 0;
             padding: 0;
@@ -122,7 +188,14 @@
         }
     </style>
 </head>
+<div class="login-loading" id="loginLoading">
+    <div class="login-loading-card">
+        <div class="login-spinner"></div>
 
+        <h6>Memproses Login</h6>
+        <p>Mohon tunggu, sedang menghubungkan ke Dashboard...</p>
+    </div>
+</div>
 <body>
 
 <div class="login-container">
@@ -183,6 +256,40 @@
     </div>
 
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
 
+        const loginForm = document.querySelector('form');
+        const loginButton = loginForm
+            ? loginForm.querySelector('button[type="submit"], input[type="submit"]')
+            : null;
+
+        const loading = document.getElementById('loginLoading');
+
+        if (!loginForm || !loginButton || !loading) return;
+
+        let isSubmitting = false;
+
+        loginForm.addEventListener('submit', function (event) {
+
+            if (isSubmitting) {
+                event.preventDefault();
+                return false;
+            }
+
+            isSubmitting = true;
+
+            loading.classList.add('active');
+
+            loginButton.disabled = true;
+            loginButton.innerHTML = `
+                <span class="spinner-border spinner-border-sm me-2"></span>
+                Memproses...
+            `;
+
+        });
+
+    });
+</script>
 </body>
 </html>
