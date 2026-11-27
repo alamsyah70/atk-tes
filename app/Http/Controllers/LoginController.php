@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Services\AuditLogger;
 
 class LoginController extends Controller
 {
@@ -55,6 +56,12 @@ class LoginController extends Controller
                 );
             }
 
+            AuditLogger::log(
+                'login',
+                'auth',
+                'Pengguna berhasil login ke aplikasi.'
+            );
+
             // Dashboard pusat
             if ($user->hasAnyRole([
                 'Super Admin',
@@ -78,6 +85,12 @@ class LoginController extends Controller
 
     public function logout(Request $request)
     {
+        AuditLogger::log(
+            'logout',
+            'auth',
+            'Pengguna melakukan logout.'
+        );
+        
         Auth::logout();
 
         $request->session()->invalidate();

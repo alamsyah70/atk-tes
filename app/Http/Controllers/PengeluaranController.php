@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Models\Barang;
+use App\Services\AuditLogger;
 
 class PengeluaranController extends Controller
 {
@@ -564,6 +565,37 @@ class PengeluaranController extends Controller
                         'jumlah_harga_pokok' => $jumlahHargaPokok,
                     ]);
                 }
+
+                // AUDIT: PENGELUARAN BERHASIL DISIMPAN
+                $detailAudit = DB::table('detail_pengeluarans')
+                ->where('pengeluaran_id', $pengeluaran->id)
+                ->get([
+                    'barang_id',
+                    'kode_barang',
+                    'nama_barang',
+                    'qty',
+                    'harga_pokok',
+                    'jumlah_harga_pokok',
+                ])
+                ->toArray();
+
+                AuditLogger::log(
+                'create',
+                'pengeluaran',
+                'Membuat transaksi pengeluaran ' . $pengeluaran->nomor_pengeluaran,
+                $pengeluaran,
+                null,
+                [
+                    'nomor_pengeluaran' => $pengeluaran->nomor_pengeluaran,
+                    'branch_id' => $pengeluaran->branch_id,
+                    'divisi' => $pengeluaran->divisi,
+                    'nama_pengambil' => $pengeluaran->nama_pengambil,
+                    'tanggal' => $pengeluaran->tanggal,
+                    'keterangan' => $pengeluaran->keterangan,
+                    'details' => $detailAudit,
+                ],
+                $branchId
+                );
 
                 return $pengeluaran;
 

@@ -8,6 +8,7 @@ use Illuminate\Validation\Rule;
 use App\Models\Branch;
 use App\Http\Controllers\BarangController;
 use Illuminate\Support\Facades\DB;
+use App\Services\AuditLogger;
 
 class BarangController extends Controller
 {
@@ -362,7 +363,24 @@ public function index(Request $request)
 
         $validated['branch_id'] = $branchId;
 
-        Barang::create($validated);
+        $barang = Barang::create($validated);
+
+        AuditLogger::log(
+            'create',
+            'master_barang',
+            "Menambahkan master barang {$barang->kode_barang} - {$barang->nama_barang}.",
+            $barang,
+            null,
+            $barang->only([
+                'branch_id',
+                'kode_barang',
+                'nama_barang',
+                'kategori',
+                'satuan',
+                'lokasi',
+            ]),
+            $barang->branch_id
+        );
 
         return redirect()
             ->route('barangs.index')
@@ -432,7 +450,35 @@ public function index(Request $request)
 
         $validated['branch_id'] = $branchId;
 
+        $oldValues = $barang->only([
+            'branch_id',
+            'kode_barang',
+            'nama_barang',
+            'kategori',
+            'satuan',
+            'lokasi',
+        ]);
+
         $barang->update($validated);
+
+        $newValues = $barang->only([
+            'branch_id',
+            'kode_barang',
+            'nama_barang',
+            'kategori',
+            'satuan',
+            'lokasi',
+        ]);
+
+        AuditLogger::log(
+            'update',
+            'master_barang',
+            "Memperbarui master barang {$barang->kode_barang} - {$barang->nama_barang}.",
+            $barang,
+            $oldValues,
+            $newValues,
+            $barang->branch_id
+        );
 
         return redirect()
             ->route('barangs.index', $request->query())
@@ -456,6 +502,27 @@ public function index(Request $request)
                 ->route('barangs.index', $request->query())
                 ->with('error', 'Barang tidak dapat dihapus karena sudah digunakan dalam transaksi.');
         }
+
+        $oldValues = $barang->only([
+            'branch_id',
+            'kode_barang',
+            'nama_barang',
+            'kategori',
+            'satuan',
+            'lokasi',
+        ]);
+        
+        $branchId = $barang->branch_id;
+        
+        AuditLogger::log(
+            'delete',
+            'master_barang',
+            "Menghapus master barang {$barang->kode_barang} - {$barang->nama_barang}.",
+            $barang,
+            $oldValues,
+            null,
+            $branchId
+        );
 
         $barang->delete();
 

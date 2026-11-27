@@ -245,13 +245,23 @@
 
 <div class="user-page container-fluid">
 
-    {{-- HEADER --}}
-    <div class="page-header">
+{{-- HEADER --}}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
 
-        <h2 class="page-title">
-            <i class="bi bi-people-fill me-2"></i>
-            Daftar User
-        </h2>
+    <h2 class="page-title mb-0">
+        <i class="bi bi-people-fill me-2"></i>
+        Daftar User
+    </h2>
+
+    <div class="d-flex gap-2">
+
+        <a href="{{ route('audit-logs.index') }}"
+           class="btn btn-outline-primary">
+
+            <i class="bi bi-clock-history me-1"></i>
+            Log User
+
+        </a>
 
         <button type="button"
             class="btn btn-primary"
@@ -264,6 +274,8 @@
         </button>
 
     </div>
+
+</div>
 
     {{-- NOTIFIKASI --}}
     @if (session('success'))

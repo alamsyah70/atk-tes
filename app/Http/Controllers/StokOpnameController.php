@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\AuditLogger;
 
 class StokOpnameController extends Controller
 {
@@ -226,6 +227,23 @@ class StokOpnameController extends Controller
 
             DetailStokOpname::insert($details);
 
+            AuditLogger::log(
+                'create',
+                'stok_opname',
+                'Membuat sesi stok opname ' . $opname->nomor_opname,
+                $opname,
+                null,
+                [
+                    'nomor_opname' => $opname->nomor_opname,
+                    'branch_id' => $opname->branch_id,
+                    'tanggal' => $opname->tanggal,
+                    'status' => 'draft',
+                    'jumlah_barang' => count($details),
+                    'snapshot_at' => $snapshotAt->toDateTimeString(),
+                ],
+                (int) $branchId
+            );
+
             return redirect()
                 ->route('stok-opname.show', $opname->id)
                 ->with('success', 'Sesi stok opname berhasil dibuat. Silakan isi stok fisik.');
@@ -305,6 +323,9 @@ class StokOpnameController extends Controller
                 $opname->id
             )->lockForUpdate()->get();
 
+            $oldAudit = [];
+            $newAudit = [];
+
             foreach ($details as $detail) {
                 $key = $detail->id;
 
@@ -316,11 +337,36 @@ class StokOpnameController extends Controller
 
                 $fisik = (int) $request->stok_fisik[$key];
 
+                $oldAudit[] = [
+                    'detail_id' => $detail->id,
+                    'kode_barang' => $detail->kode_barang,
+                    'stok_fisik' => $detail->stok_fisik,
+                    'selisih' => $detail->selisih,
+                ];
+
                 $detail->update([
                     'stok_fisik' => $fisik,
                     'selisih' => $fisik - $detail->stok_sistem,
                 ]);
+
+                $newAudit[] = [
+                    'detail_id' => $detail->id,
+                    'kode_barang' => $detail->kode_barang,
+                    'stok_fisik' => $fisik,
+                    'selisih' => $fisik - (int) $detail->stok_sistem,
+                ];
+
             }
+
+            AuditLogger::log(
+                'update',
+                'stok_opname',
+                'Menyimpan hasil pemeriksaan fisik ' . $opname->nomor_opname,
+                $opname,
+                ['details' => $oldAudit],
+                ['details' => $newAudit],
+                (int) $opname->branch_id
+            );
         });
 
         return back()->with(
@@ -371,6 +417,8 @@ class StokOpnameController extends Controller
                 ]);
             }
 
+            $auditPenyesuaian = [];
+
             // Nomor urut untuk setiap penyesuaian
             $nomorUrut = 1;
 
@@ -395,7 +443,7 @@ class StokOpnameController extends Controller
                     . str_pad($nomorUrut, 4, '0', STR_PAD_LEFT);
 
                 // Masukkan selisih ke tabel penyesuaian_stoks
-                DB::table('penyesuaian_stoks')->insert([
+                $penyesuaianId = DB::table('penyesuaian_stoks')->insertGetId([
                     'branch_id' => $opname->branch_id,
                     'barang_id' => $detail->barang_id,
                     'user_id' => Auth::id(),
@@ -414,6 +462,15 @@ class StokOpnameController extends Controller
                     'updated_at' => now(),
                 ]);
 
+                $auditPenyesuaian[] = [
+                    'id' => $penyesuaianId,
+                    'nomor_penyesuaian' => $nomorPenyesuaian,
+                    'barang_id' => $detail->barang_id,
+                    'kode_barang' => $detail->kode_barang,
+                    'nama_barang' => $detail->nama_barang,
+                    'qty_koreksi' => $selisih,
+                ];
+
                 // Simpan nilai selisih pada detail opname
                 $detail->update([
                     'selisih' => $selisih,
@@ -427,6 +484,24 @@ class StokOpnameController extends Controller
                 'status' => 'selesai',
                 'finalized_at' => now(),
             ]);
+
+            AuditLogger::log(
+                'finalize',
+                'stok_opname',
+                'Finalisasi stok opname ' . $opname->nomor_opname,
+                $opname,
+                [
+                    'status' => 'draft',
+                ],
+                [
+                    'status' => 'selesai',
+                    'finalized_at' => $opname->finalized_at,
+                    'jumlah_barang' => $details->count(),
+                    'jumlah_barang_selisih' => count($auditPenyesuaian),
+                    'penyesuaian' => $auditPenyesuaian,
+                ],
+                (int) $opname->branch_id
+            );
         });
 
         return redirect()
@@ -650,6 +725,8 @@ class StokOpnameController extends Controller
                 ]);
             }
 
+            $auditPembalikan = [];
+
             foreach ($penyesuaianAsli as $asli) {
 
                 // Cegah transaksi asli dibalik lebih dari satu kali
@@ -695,6 +772,15 @@ class StokOpnameController extends Controller
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                $auditPembalikan[] = [
+                    'nomor_asli' => $asli->nomor_penyesuaian,
+                    'nomor_pembalik' => $nomorPembalik,
+                    'barang_id' => $asli->barang_id,
+                    'kode_barang' => $asli->kode_barang,
+                    'qty_asli' => (int) $asli->qty_koreksi,
+                    'qty_pembalik' => -1 * (int) $asli->qty_koreksi,
+                ];
             }
 
             // Simpan status dan riwayat pembatalan
@@ -707,6 +793,24 @@ class StokOpnameController extends Controller
                     'alasan_pembatalan' => $request->alasan_pembatalan,
                     'updated_at' => now(),
                 ]);
+            
+                AuditLogger::log(
+                    'cancel',
+                    'stok_opname',
+                    'Membatalkan stok opname ' . $opname->nomor_opname,
+                    $opname,
+                    [
+                        'status' => 'selesai',
+                    ],
+                    [
+                        'status' => 'dibatalkan',
+                        'alasan_pembatalan' => $request->alasan_pembatalan,
+                        'dibatalkan_oleh' => Auth::id(),
+                        'jumlah_transaksi_dibalik' => count($auditPembalikan),
+                        'transaksi_pembalik' => $auditPembalikan,
+                    ],
+                    (int) $opname->branch_id
+                );
         });
 
         return redirect()

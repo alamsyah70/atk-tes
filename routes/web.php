@@ -11,6 +11,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\BarangController;
 use App\Http\Controllers\StockCardController;
 use App\Http\Controllers\StokOpnameController;
+use App\Http\Controllers\AuditLogController;
 
 
 /*
@@ -435,5 +436,19 @@ Route::middleware(['auth'])->prefix('stok-opname')->name('stok-opname.')->group(
     Route::post('/{stokOpname}/cancel', [StokOpnameController::class, 'cancel'])
         ->middleware('permission:stok-opname.cancel')
         ->name('cancel');
+
+});
+
+/*
+|--------------------------------------------------------------------------
+| AUDIT LOG
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth'])->prefix('audit-logs')->name('audit-logs.')->group(function () {
+
+    Route::get('/', [AuditLogController::class, 'index'])
+        ->middleware('permission:audit-log.view')
+        ->name('index');
 
 });

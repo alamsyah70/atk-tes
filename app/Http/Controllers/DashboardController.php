@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Storage;
 use App\Models\Barang;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
+use App\Services\AuditLogger;
+
 
 class DashboardController extends Controller
 {
@@ -1154,7 +1156,32 @@ public function index(Request $request)
                             'updated_at' => now(),
                         ]);
                 }
-
+                // AUDIT: PENERIMAAN BERHASIL DISIMPAN
+                AuditLogger::log(
+                    'create',
+                    'penerimaan',
+                    'Membuat transaksi penerimaan barang ' . $penerimaan->nomor_penerimaan,
+                    $penerimaan,
+                    null,
+                    [
+                        'nomor_penerimaan' => $penerimaan->nomor_penerimaan,
+                        'supplier_id' => $penerimaan->supplier_id,
+                        'branch_id' => $penerimaan->branch_id,
+                        'tanggal' => $penerimaan->tanggal,
+                        'keterangan' => $penerimaan->keterangan,
+                        'jumlah_baris' => $jumlahBaris,
+                        'total_qty' => array_sum(array_map('intval', $validated['qty'])),
+                        'total_nilai' => array_sum(
+                            array_map(
+                                fn ($qty, $harga) => (float) $qty * (float) $harga,
+                                $validated['qty'],
+                                $validated['harga']
+                            )
+                        ),
+                        'bukti_po' => $buktiPoPath,
+                    ],
+                    $branchId
+                );
                 return $penerimaan;
 
             }, 3);
@@ -1309,6 +1336,14 @@ public function index(Request $request)
                 ]);
             }
 
+            $oldBarangValues = [
+                'kode_barang' => $barang->kode_barang,
+                'nama_barang' => $barang->nama_barang,
+                'kategori' => $barang->kategori,
+                'satuan' => $barang->satuan,
+                'lokasi' => $barang->lokasi,
+            ];
+
             // 7. Update Master Barang
             $barang->update([
                 'kode_barang' => $kodeBaru,
@@ -1321,9 +1356,27 @@ public function index(Request $request)
                 // Average berubah hanya melalui penerimaan barang.
             ]);
 
+            // AUDIT: PERUBAHAN MASTER BARANG
+            AuditLogger::log(
+                'update',
+                'master_barang',
+                'Memperbarui master barang ' . $kodeBaru,
+                $barang,
+                $oldBarangValues,
+                [
+                    'kode_barang' => $barang->kode_barang,
+                    'nama_barang' => $barang->nama_barang,
+                    'kategori' => $barang->kategori,
+                    'satuan' => $barang->satuan,
+                    'lokasi' => $barang->lokasi,
+                ],
+                (int) $branchId
+            );
+
             // 8. Simpan histori penyesuaian stok
             if ($qtyKoreksi !== 0) {
-                DB::table('penyesuaian_stoks')->insert([
+
+                $penyesuaianId = DB::table('penyesuaian_stoks')->insertGetId([
                     'branch_id' => $branchId,
                     'barang_id' => $barang->id,
                     'user_id' => $user->id,
@@ -1342,6 +1395,31 @@ public function index(Request $request)
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                // AUDIT: KOREKSI STOK
+                AuditLogger::log(
+                    'adjust',
+                    'penyesuaian_stok',
+                    'Koreksi stok barang ' . $kodeBaru .
+                        ' dengan perubahan ' . $qtyKoreksi,
+                    $barang,
+                    [
+                        'stok_sebelum' => $stokSekarang,
+                        'qty_koreksi' => 0,
+                    ],
+                    [
+                        'penyesuaian_id' => $penyesuaianId,
+                        'nomor_penyesuaian' => 'ADJ-' .
+                            now()->format('YmdHis') . '-' . $user->id,
+                        'kode_barang' => $kodeBaru,
+                        'nama_barang' => $validated['nama_barang'],
+                        'stok_sesudah' => $stokAkhir,
+                        'qty_koreksi' => $qtyKoreksi,
+                        'alasan' => $validated['alasan']
+                            ?? 'Penyesuaian stok barang',
+                    ],
+                    (int) $branchId
+                );
             }
         });
 
@@ -1370,13 +1448,41 @@ public function index(Request $request)
 
         DB::transaction(function () use ($penerimaan) {
 
-            // Hapus detail penerimaan terlebih dahulu
+            $oldValues = [
+                'nomor_penerimaan' => $penerimaan->nomor_penerimaan,
+                'supplier_id' => $penerimaan->supplier_id,
+                'branch_id' => $penerimaan->branch_id,
+                'tanggal' => $penerimaan->tanggal,
+                'keterangan' => $penerimaan->keterangan,
+                'bukti_po' => $penerimaan->bukti_po,
+                'details' => DetailPenerimaan::where(
+                    'penerimaan_id',
+                    $penerimaan->id
+                )->get([
+                    'barang_id',
+                    'kode_barang',
+                    'nama_barang',
+                    'qty',
+                    'harga',
+                    'jumlah',
+                ])->toArray(),
+            ];
+        
             DetailPenerimaan::where(
                 'penerimaan_id',
                 $penerimaan->id
             )->delete();
-
-            // Hapus header penerimaan
+        
+            AuditLogger::log(
+                'delete',
+                'penerimaan',
+                'Menghapus penerimaan ' . $penerimaan->nomor_penerimaan,
+                $penerimaan,
+                $oldValues,
+                null,
+                (int) $penerimaan->branch_id
+            );
+        
             $penerimaan->delete();
         });
 
